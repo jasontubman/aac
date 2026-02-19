@@ -7,7 +7,7 @@ import {
   StyleSheet,
   ViewStyle,
 } from 'react-native';
-import { colors, spacing, borderRadius, getTouchTargetSize } from '../../theme';
+import { colors, spacing, borderRadius, getTouchTargetSize, defaultAccessibilityTheme } from '../../theme';
 import type { Button as ButtonType } from '../../database/types';
 import { useAACStore } from '../../store/aacStore';
 import { useSpeech } from '../../hooks/useSpeech';
@@ -38,7 +38,7 @@ export const AACButton = memo<AACButtonProps>(({ button, size = 100, onPress, st
     await speak(button.speech_text);
   };
 
-  const buttonSize = Math.max(size, getTouchTargetSize({ largeTargets: false }));
+  const buttonSize = Math.max(size, getTouchTargetSize(defaultAccessibilityTheme));
 
   return (
     <TouchableOpacity

@@ -75,14 +75,8 @@ export const SwitchScanner: React.FC<SwitchScannerProps> = ({
     }
   };
 
-  // Expose select function for external switch input
-  React.useImperativeHandle(
-    React.forwardRef(() => null),
-    () => ({
-      select: handleSelect,
-    }),
-    [currentIndex, items]
-  );
+  // Note: useImperativeHandle would require ref forwarding
+  // For now, handleSelect is available via the hook return value
 
   if (!enabled || items.length === 0) {
     return null;

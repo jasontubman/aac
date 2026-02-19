@@ -117,7 +117,12 @@ export async function saveImageToAppDirectory(
   filename: string
 ): Promise<string> {
   try {
-    const appDir = FileSystem.documentDirectory + 'images/';
+    const documentDirectory = FileSystem.documentDirectory;
+    if (!documentDirectory) {
+      throw new Error('Document directory not available');
+    }
+    
+    const appDir = documentDirectory + 'images/';
     const dirInfo = await FileSystem.getInfoAsync(appDir);
     
     if (!dirInfo.exists) {

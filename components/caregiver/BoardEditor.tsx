@@ -17,6 +17,7 @@ import {
   createBoard,
   updateBoard,
   deleteBoard,
+  getBoard,
   createButton,
   updateButton,
   deleteButton,

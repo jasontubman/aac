@@ -62,7 +62,6 @@ export default function TermsScreen() {
         <Text style={styles.text}>
           • The app is intended for communication support only, not medical diagnosis or treatment
         </Text>
-      </Text>
       </View>
 
       <View style={styles.section}>

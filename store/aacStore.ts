@@ -9,7 +9,7 @@ interface AACState {
   currentButtons: Button[];
   
   // Sentence builder
-  sentence: string[];
+  sentence: Button[];
   sentenceText: string;
   
   // Current routine
@@ -70,11 +70,11 @@ export const useAACStore = create<AACState>((set, get) => ({
     set({ sentence: [], sentenceText: '' });
   },
 
-  speakSentence: () => {
-    const { sentenceText } = get();
+  speakSentence: async () => {
+    const { sentenceText, sentence } = get();
     // Speech will be handled by the speech service
     // This just clears the sentence after speaking
-    if (sentenceText) {
+    if (sentenceText && sentence.length > 0) {
       // Clear after a delay (handled by speech service)
       setTimeout(() => {
         get().clearSentence();

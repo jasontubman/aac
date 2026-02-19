@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Alert,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { colors, spacing, borderRadius, typography } from '../../theme';
 import { useProfileStore } from '../../store/profileStore';
 import { appStorage } from '../../services/storage';
@@ -21,6 +22,7 @@ interface AdvancedFeatures {
 }
 
 export default function SettingsScreen() {
+  const router = useRouter();
   const { activeProfile, updateProfileSettings } = useProfileStore();
   const [behaviorDetection, setBehaviorDetection] = useState(false);
   const [emotionSuggestions, setEmotionSuggestions] = useState(false);
@@ -40,11 +42,11 @@ export default function SettingsScreen() {
     const settings: ProfileSettings = JSON.parse(
       activeProfile.settings_json || '{}'
     );
-    const advanced: AdvancedFeatures = settings.advancedFeatures || {
-      behaviorDetection: false,
-      emotionSuggestions: false,
-      usageAnalytics: false,
-      autoSave: true,
+    const advanced: AdvancedFeatures = {
+      behaviorDetection: settings.advancedFeatures?.behaviorDetection ?? false,
+      emotionSuggestions: settings.advancedFeatures?.emotionSuggestions ?? false,
+      usageAnalytics: settings.advancedFeatures?.usageAnalytics ?? false,
+      autoSave: settings.advancedFeatures?.autoSave ?? true,
     };
 
     setBehaviorDetection(advanced.behaviorDetection);
@@ -226,6 +228,23 @@ export default function SettingsScreen() {
         <Text style={styles.saveButtonText}>Save Settings</Text>
       </TouchableOpacity>
 
+      {/* Legal Links */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Legal</Text>
+        <TouchableOpacity
+          style={styles.linkButton}
+          onPress={() => router.push('/caregiver/privacy')}
+        >
+          <Text style={styles.linkButtonText}>Privacy Policy</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.linkButton}
+          onPress={() => router.push('/caregiver/terms')}
+        >
+          <Text style={styles.linkButtonText}>Terms of Service</Text>
+        </TouchableOpacity>
+      </View>
+
       {/* Info Section */}
       <View style={styles.infoSection}>
         <Text style={styles.infoTitle}>About Advanced Features</Text>
@@ -321,5 +340,14 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
     marginBottom: spacing.sm,
     lineHeight: 20,
+  },
+  linkButton: {
+    padding: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.neutral[200],
+  },
+  linkButtonText: {
+    ...typography.body.medium,
+    color: colors.primary[600],
   },
 });

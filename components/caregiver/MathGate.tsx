@@ -16,7 +16,7 @@ export const MathGate: React.FC = () => {
   const [num2, setNum2] = useState(0);
   const [answer, setAnswer] = useState('');
   const [attempts, setAttempts] = useState(0);
-  const [timeLeft, setTimeLeft] = useState(CAREGIVER_GATE.TIMEOUT_SECONDS);
+  const [timeLeft, setTimeLeft] = useState<number>(CAREGIVER_GATE.TIMEOUT_SECONDS);
   const { unlockCaregiverMode } = useUIStore();
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 

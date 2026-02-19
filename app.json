@@ -19,7 +19,8 @@
       "infoPlist": {
         "NSCameraUsageDescription": "We need access to your camera to add personal photos to communication boards.",
         "NSPhotoLibraryUsageDescription": "We need access to your photo library to add personal photos to communication boards.",
-        "NSSpeechRecognitionUsageDescription": "We use speech recognition to help with communication."
+        "NSSpeechRecognitionUsageDescription": "We use speech recognition to help with communication.",
+        "ITSAppUsesNonExemptEncryption": false
       },
       "config": {
         "usesNonExemptEncryption": false
@@ -64,6 +65,8 @@
     },
     "privacy": "public",
     "description": "Simple, private, affordable AAC for kids. Offline-first communication support.",
-    "keywords": ["AAC", "communication", "kids", "offline", "accessibility"]
+    "keywords": ["AAC", "communication", "kids", "offline", "accessibility"],
+    "primaryColor": "#0ea5e9",
+    "sdkVersion": "54.0.33"
   }
 }

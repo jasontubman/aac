@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { RoutineSelector } from '../../components/routines/RoutineSelector';
 import { RoutineEditor } from '../../components/routines/RoutineEditor';
 import { colors, spacing, typography } from '../../theme';

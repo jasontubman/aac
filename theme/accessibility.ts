@@ -59,14 +59,14 @@ export function getAccessibilitySpacing(theme: AccessibilityTheme) {
 // Get accessibility-adjusted typography
 export function getAccessibilityTypography(theme: AccessibilityTheme) {
   const scale = theme.fontSizeScale;
-  const scaledTypography = { ...typography };
+  const scaledTypography = JSON.parse(JSON.stringify(typography)) as typeof typography;
 
   // Scale all font sizes
   Object.keys(scaledTypography).forEach((key) => {
     const category = scaledTypography[key as keyof typeof typography];
     if (typeof category === 'object' && category !== null) {
       Object.keys(category).forEach((subKey) => {
-        const style = category[subKey as keyof typeof category];
+        const style = category[subKey as keyof typeof category] as any;
         if (style && typeof style === 'object' && 'fontSize' in style) {
           style.fontSize = Math.round(style.fontSize * scale);
           style.lineHeight = Math.round(style.lineHeight * scale);
