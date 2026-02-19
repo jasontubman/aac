@@ -10,6 +10,8 @@ import { useProfileStore } from '../../store/profileStore';
 import { useBehaviorDetection } from '../../services/behaviorDetection';
 import { initDatabase } from '../../database/init';
 import { colors, spacing } from '../../theme';
+import { EmptyState } from '../../components/common/EmptyState';
+import { LoadingSpinner } from '../../components/common/LoadingSpinner';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -90,10 +92,7 @@ export default function HomeScreen() {
   if (isInitializing || profileLoading || isLoading) {
     return (
       <View style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary[500]} />
-          <Text style={styles.loadingText}>Loading...</Text>
-        </View>
+        <LoadingSpinner message="Loading your board..." fullScreen />
       </View>
     );
   }
@@ -103,8 +102,11 @@ export default function HomeScreen() {
     return (
       <View style={styles.container}>
         <Pressable onLongPress={handleLongPress} style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>No board available</Text>
-          <Text style={styles.emptySubtext}>Long press to access caregiver mode</Text>
+          <EmptyState
+            title="No board available"
+            message="Long press anywhere to access caregiver mode and create a board"
+            icon="📱"
+          />
         </Pressable>
       </View>
     );
@@ -165,32 +167,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background.light,
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: colors.text.primary,
-  },
   emptyContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 32,
-  },
-  emptyText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.text.primary,
-    marginBottom: 8,
-  },
-  emptySubtext: {
-    fontSize: 14,
-    color: colors.text.secondary,
-    textAlign: 'center',
+    width: '100%',
   },
   boardContainer: {
     flex: 1,

@@ -15,6 +15,10 @@ export interface ProfileSettings {
   voiceId?: string;
   voiceRate?: number;
   voicePitch?: number;
+  switchScanning?: boolean;
+  dwellSelection?: boolean;
+  scanSpeed?: number; // milliseconds
+  dwellTime?: number; // milliseconds
   advancedFeatures?: {
     behaviorDetection?: boolean;
     emotionSuggestions?: boolean;

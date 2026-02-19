@@ -41,14 +41,27 @@ export function throttle<T extends (...args: any[]) => any>(
 }
 
 /**
- * Lazy load images with placeholder
+ * Validate URI and return image source
+ * Returns null if URI is invalid, empty, or not suitable for Image component
  */
-export function getImageSource(uri: string | null | undefined): { uri: string } | number {
-  if (!uri) {
-    // Return placeholder image
-    return require('../assets/icon.png');
+export function isValidImageUri(uri: string | null | undefined): boolean {
+  if (!uri || typeof uri !== 'string' || uri.trim().length === 0) {
+    return false;
   }
-  return { uri };
+  // Check if it's a valid URI format (http://, https://, file://, or data:)
+  const uriPattern = /^(https?:\/\/|file:\/\/|data:)/i;
+  return uriPattern.test(uri.trim());
+}
+
+/**
+ * Get image source with validation
+ * Returns null if URI is invalid, which can be used to conditionally render Image
+ */
+export function getImageSource(uri: string | null | undefined): { uri: string } | number | null {
+  if (!isValidImageUri(uri)) {
+    return null;
+  }
+  return { uri: uri!.trim() };
 }
 
 /**

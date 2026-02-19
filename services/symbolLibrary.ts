@@ -15,9 +15,10 @@
 const ARASAAC_API_BASE = 'https://api.arasaac.org/api/pictograms';
 
 // Symbol mapping for core vocabulary
+// Note: Keys are lowercase to match the case-insensitive lookup in getSymbolUrl
 const CORE_SYMBOL_MAPPING: Record<string, number> = {
   // People
-  'I': 1, // Example ID - replace with actual ARASAAC IDs
+  'i': 1, // Example ID - replace with actual ARASAAC IDs
   'you': 2,
   'me': 3,
   'mom': 4,
@@ -72,7 +73,8 @@ export function getARASAACSymbolUrl(
 
 /**
  * Get symbol URL for a word
- * Falls back to placeholder if symbol not found
+ * Returns ARASAAC URL if found, or empty string if not found
+ * Components should handle empty string by showing text-only or placeholder
  */
 export function getSymbolUrl(word: string, color: boolean = true): string {
   const symbolId = CORE_SYMBOL_MAPPING[word.toLowerCase()];
@@ -80,9 +82,9 @@ export function getSymbolUrl(word: string, color: boolean = true): string {
     return getARASAACSymbolUrl(symbolId, color);
   }
   
-  // Fallback: use OpenSymbols search API or placeholder
-  // For now, return placeholder
-  return `asset://symbols/${word.toLowerCase()}.png`;
+  // Return empty string when symbol not found
+  // Components can handle this by showing text-only or using a placeholder image
+  return '';
 }
 
 /**

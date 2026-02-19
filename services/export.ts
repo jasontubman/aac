@@ -4,7 +4,7 @@
  * Exports all profile data as JSON for backup/portability
  */
 
-import * as FileSystem from 'expo-file-system';
+import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import {
   getProfile,
@@ -63,13 +63,12 @@ export async function exportProfileData(profileId: string): Promise<string> {
 
     // Save to file
     const fileName = `aac-export-${profile.name}-${Date.now()}.json`;
-    const fileUri = `${FileSystem.documentDirectory}${fileName}`;
+    const file = new File(Paths.document, fileName);
     
-    await FileSystem.writeAsStringAsync(fileUri, jsonString, {
-      encoding: FileSystem.EncodingType.UTF8,
-    });
+    // Write file with UTF8 encoding
+    file.write(jsonString);
 
-    return fileUri;
+    return file.uri;
   } catch (error) {
     console.error('Error exporting data:', error);
     throw error;

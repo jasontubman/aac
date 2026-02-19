@@ -14,6 +14,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '../../theme';
 import { searchSymbols, getARASAACSymbolUrl, type SymbolResult } from '../../services/symbolLibrary';
+import { isValidImageUri } from '../../utils/performance';
 
 interface SymbolPickerProps {
   visible: boolean;
@@ -94,11 +95,17 @@ export const SymbolPicker: React.FC<SymbolPickerProps> = ({
       onPress={() => handleSelect(item)}
       activeOpacity={0.7}
     >
-      <Image
-        source={{ uri: item.imageUrl }}
-        style={styles.symbolImage}
-        resizeMode="contain"
-      />
+      {isValidImageUri(item.imageUrl) ? (
+        <Image
+          source={{ uri: item.imageUrl }}
+          style={styles.symbolImage}
+          resizeMode="contain"
+        />
+      ) : (
+        <View style={styles.symbolPlaceholder}>
+          <Text style={styles.symbolPlaceholderText}>?</Text>
+        </View>
+      )}
       <Text style={styles.symbolName} numberOfLines={1}>
         {item.name}
       </Text>
@@ -243,7 +250,7 @@ const styles = StyleSheet.create({
   },
   emptySubtext: {
     ...typography.body.small,
-    color: colors.text.tertiary,
+    color: colors.text.secondary,
   },
   grid: {
     padding: spacing.md,
@@ -282,8 +289,22 @@ const styles = StyleSheet.create({
   },
   attributionText: {
     ...typography.body.small,
-    color: colors.text.tertiary,
+    color: colors.text.secondary,
     textAlign: 'center',
     fontSize: 10,
+  },
+  symbolPlaceholder: {
+    width: '80%',
+    height: '70%',
+    backgroundColor: colors.neutral[200],
+    borderRadius: borderRadius.sm,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
+  symbolPlaceholderText: {
+    ...typography.heading.h2,
+    color: colors.text.secondary,
+    fontSize: 24,
   },
 });

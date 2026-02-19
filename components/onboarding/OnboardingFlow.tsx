@@ -390,7 +390,7 @@ const styles = StyleSheet.create({
   },
   description: {
     ...typography.body.small,
-    color: colors.text.tertiary,
+    color: colors.text.secondary,
     textAlign: 'center',
     marginBottom: spacing.xxl,
   },

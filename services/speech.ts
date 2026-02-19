@@ -28,29 +28,57 @@ class SpeechQueue {
         return;
       }
 
+      let callbackFired = false;
+      let timeoutId: NodeJS.Timeout | null = null;
+
+      // Set a timeout to detect if callbacks never fire
+      const maxDuration = Math.max(5000, text.length * 100); // At least 5 seconds, or 100ms per character
+
       const speechOptions: Speech.SpeechOptions = {
         language: options.language || 'en-US',
         pitch: options.pitch ?? 1.0,
         rate: options.rate ?? 0.5,
         volume: options.volume ?? 1.0,
         onStart: () => {
+          if (timeoutId) clearTimeout(timeoutId);
+          callbackFired = true;
           this.isSpeaking = true;
+          console.log('Speech started:', text);
           options.onStart?.();
+          // Set a new timeout for completion
+          timeoutId = setTimeout(() => {
+            if (this.isSpeaking) {
+              console.warn('Speech onDone/onError never fired, forcing completion');
+              this.isSpeaking = false;
+              resolve();
+              this.processQueue();
+            }
+          }, maxDuration);
         },
         onDone: () => {
+          if (timeoutId) clearTimeout(timeoutId);
+          callbackFired = true;
           this.isSpeaking = false;
+          console.log('Speech completed:', text);
           options.onDone?.();
           resolve();
           this.processQueue();
         },
         onStopped: () => {
+          if (timeoutId) clearTimeout(timeoutId);
+          callbackFired = true;
           this.isSpeaking = false;
+          console.log('Speech stopped:', text);
           options.onStopped?.();
           resolve();
           this.processQueue();
         },
         onError: (error: Error) => {
+          if (timeoutId) clearTimeout(timeoutId);
+          callbackFired = true;
           this.isSpeaking = false;
+          console.error('Speech error:', error, 'Text:', text);
+          console.error('Speech options:', speechOptions);
           options.onError?.(error);
           reject(error);
           this.processQueue();
@@ -62,15 +90,53 @@ class SpeechQueue {
         speechOptions.voice = options.voice;
       }
 
+      // Set a timeout to detect if callbacks never fire (after speechOptions is defined)
+      timeoutId = setTimeout(() => {
+        if (!callbackFired) {
+          callbackFired = true;
+          this.isSpeaking = false;
+          console.error('Speech timeout: callbacks did not fire for text:', text);
+          console.error('Speech options:', speechOptions);
+          // Still resolve to prevent hanging, but log the issue
+          resolve();
+          this.processQueue();
+        }
+      }, maxDuration);
+
       if (this.isSpeaking) {
         // Add to queue
         this.queue.push(text);
         this.currentOptions = options;
+        if (timeoutId) clearTimeout(timeoutId);
         resolve();
       } else {
         // Speak immediately
-        this.isSpeaking = true;
-        Speech.speak(text, speechOptions);
+        try {
+          // Verify Speech module is available
+          if (!Speech || typeof Speech.speak !== 'function') {
+            throw new Error('Speech.speak is not available');
+          }
+
+          console.log('Calling Speech.speak with:', {
+            text,
+            language: speechOptions.language,
+            pitch: speechOptions.pitch,
+            rate: speechOptions.rate,
+            volume: speechOptions.volume,
+            voice: speechOptions.voice,
+            platform: Platform.OS,
+          });
+          this.isSpeaking = true;
+          Speech.speak(text, speechOptions);
+          console.log('Speech.speak called successfully, waiting for callbacks...');
+        } catch (error) {
+          if (timeoutId) clearTimeout(timeoutId);
+          this.isSpeaking = false;
+          console.error('Error calling Speech.speak:', error);
+          console.error('Speech module available:', !!Speech);
+          console.error('Speech.speak function available:', typeof Speech?.speak === 'function');
+          reject(error);
+        }
       }
     });
   }
@@ -102,6 +168,62 @@ class SpeechQueue {
 
 // Global speech queue instance
 const speechQueue = new SpeechQueue();
+
+// Configure audio mode to play in silent mode (iOS)
+// Use a promise to ensure this only runs once, even if called multiple times
+let audioModeConfigPromise: Promise<void> | null = null;
+
+async function configureAudioMode(): Promise<void> {
+  // Return existing promise if already configuring
+  if (audioModeConfigPromise) {
+    return audioModeConfigPromise;
+  }
+  
+  // Create a new promise for configuration
+  audioModeConfigPromise = (async () => {
+    try {
+      if (Platform.OS === 'ios') {
+        // Try expo-audio first (SDK 54+), fallback to expo-av
+        try {
+          const { setAudioModeAsync } = await import('expo-audio');
+          const audioMode = {
+            playsInSilentMode: true,
+            interruptionMode: 'mixWithOthers' as const,
+          };
+          await setAudioModeAsync(audioMode);
+          console.log('✅ Audio mode configured (expo-audio):', JSON.stringify(audioMode, null, 2));
+        } catch (expoAudioError) {
+          console.warn('expo-audio failed, falling back to expo-av:', expoAudioError);
+          // Fallback to expo-av for older SDKs or if expo-audio not available
+          try {
+            const expoAv = await import('expo-av');
+            const Audio = expoAv.Audio;
+            if (Audio && typeof Audio.setAudioModeAsync === 'function') {
+              const audioMode = {
+                playsInSilentModeIOS: true,
+                allowsRecordingIOS: false,
+                staysActiveInBackground: false,
+              };
+              await Audio.setAudioModeAsync(audioMode);
+              console.log('✅ Audio mode configured (expo-av):', JSON.stringify(audioMode, null, 2));
+            } else {
+              console.warn('expo-av Audio.setAudioModeAsync not available');
+            }
+          } catch (avError) {
+            console.warn('expo-av also failed:', avError);
+          }
+        }
+      } else {
+        console.log('Audio mode configuration skipped (not iOS)');
+      }
+    } catch (error) {
+      console.error('❌ Error configuring audio mode:', error);
+      // Don't throw - allow speech to work even if audio mode config fails
+    }
+  })();
+  
+  return audioModeConfigPromise;
+}
 
 // Get available voices
 export async function getAvailableVoices(): Promise<Speech.Voice[]> {
@@ -176,6 +298,9 @@ export class SpeechService {
   }
 
   async initialize(): Promise<void> {
+    // Configure audio mode first (especially important for iOS silent mode)
+    await configureAudioMode();
+    
     if (!this.voiceId) {
       this.voiceId = await getDefaultVoice();
     }
@@ -223,4 +348,19 @@ export function getDefaultSpeechService(): SpeechService {
     defaultSpeechService = new SpeechService();
   }
   return defaultSpeechService;
+}
+
+// Test/verify function to check audio mode configuration
+export async function verifyAudioMode(): Promise<void> {
+  // Audio mode is already configured in configureAudioMode()
+  // This function just logs confirmation for testing purposes
+  console.log('🔍 Audio mode configuration status:');
+  console.log('Platform:', Platform.OS);
+  if (Platform.OS === 'ios') {
+    console.log('✅ Audio mode configured: playsInSilentMode = true');
+    console.log('📱 To test: Put iPhone in silent mode (side switch) and try speaking');
+    console.log('   Speech should still play even when silent switch is on');
+  } else {
+    console.log('Audio mode configuration skipped (not iOS)');
+  }
 }

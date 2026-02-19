@@ -28,7 +28,7 @@ export const BoardGrid = memo<BoardGridProps>(({ board, buttons, onButtonPress }
 
   useEffect(() => {
     // Enable switch scanning if available
-    setSwitchScanningEnabled(canUseSwitchScanning);
+    setSwitchScanningEnabled(canUseSwitchScanning ?? false);
   }, [canUseSwitchScanning]);
 
   // Calculate button size based on grid dimensions

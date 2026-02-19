@@ -42,6 +42,10 @@ export default function SettingsScreen() {
   const [voiceRate, setVoiceRate] = useState(0.5);
   const [voicePitch, setVoicePitch] = useState(1.0);
   const [isExporting, setIsExporting] = useState(false);
+  const [switchScanning, setSwitchScanning] = useState(false);
+  const [dwellSelection, setDwellSelection] = useState(false);
+  const [scanSpeed, setScanSpeed] = useState(1000); // milliseconds
+  const [dwellTime, setDwellTime] = useState(1500); // milliseconds
 
   useEffect(() => {
     loadSettings();
@@ -84,6 +88,12 @@ export default function SettingsScreen() {
     setSelectedVoice(settings.voiceId || '');
     setVoiceRate(settings.voiceRate ?? 0.5);
     setVoicePitch(settings.voicePitch ?? 1.0);
+
+    // Accessibility settings
+    setSwitchScanning(settings.switchScanning || false);
+    setDwellSelection(settings.dwellSelection || false);
+    setScanSpeed(settings.scanSpeed ?? 1000);
+    setDwellTime(settings.dwellTime ?? 1500);
   };
 
   const saveSettings = async () => {
@@ -105,6 +115,10 @@ export default function SettingsScreen() {
       voiceId: selectedVoice || undefined,
       voiceRate,
       voicePitch,
+      switchScanning,
+      dwellSelection,
+      scanSpeed,
+      dwellTime,
     };
 
     await updateProfileSettings(activeProfile.id, settings);
@@ -252,6 +266,120 @@ export default function SettingsScreen() {
             }}
           />
         </View>
+
+        <View style={styles.settingRow}>
+          <View style={styles.settingInfo}>
+            <Text style={styles.settingLabel}>Switch Scanning</Text>
+            <Text style={styles.settingDescription}>
+              Enable switch scanning for switch input devices (subscription required)
+            </Text>
+          </View>
+          <Switch
+            value={switchScanning}
+            onValueChange={setSwitchScanning}
+            trackColor={{
+              false: colors.neutral[300],
+              true: colors.primary[500],
+            }}
+          />
+        </View>
+
+        {switchScanning && (
+          <>
+            <View style={styles.settingRow}>
+              <View style={styles.settingInfo}>
+                <Text style={styles.settingLabel}>Scan Speed</Text>
+                <Text style={styles.settingDescription}>
+                  Time per item: {(scanSpeed / 1000).toFixed(1)}s
+                </Text>
+              </View>
+            </View>
+            <View style={styles.sliderContainer}>
+              <Text style={styles.sliderLabel}>0.5s</Text>
+              <View style={styles.sliderWrapper}>
+                <View
+                  style={[
+                    styles.sliderTrack,
+                    { width: `${((scanSpeed - 500) / 1500) * 100}%` },
+                  ]}
+                />
+              </View>
+              <Text style={styles.sliderLabel}>2.0s</Text>
+            </View>
+            <View style={styles.sliderButtons}>
+              <TouchableOpacity
+                style={styles.sliderButton}
+                onPress={() => setScanSpeed(Math.max(500, scanSpeed - 100))}
+              >
+                <Text>-</Text>
+              </TouchableOpacity>
+              <Text style={styles.sliderValue}>{(scanSpeed / 1000).toFixed(1)}s</Text>
+              <TouchableOpacity
+                style={styles.sliderButton}
+                onPress={() => setScanSpeed(Math.min(2000, scanSpeed + 100))}
+              >
+                <Text>+</Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
+
+        <View style={styles.settingRow}>
+          <View style={styles.settingInfo}>
+            <Text style={styles.settingLabel}>Dwell Selection</Text>
+            <Text style={styles.settingDescription}>
+              Auto-select buttons after holding (subscription required)
+            </Text>
+          </View>
+          <Switch
+            value={dwellSelection}
+            onValueChange={setDwellSelection}
+            trackColor={{
+              false: colors.neutral[300],
+              true: colors.primary[500],
+            }}
+          />
+        </View>
+
+        {dwellSelection && (
+          <>
+            <View style={styles.settingRow}>
+              <View style={styles.settingInfo}>
+                <Text style={styles.settingLabel}>Dwell Time</Text>
+                <Text style={styles.settingDescription}>
+                  Hold duration: {(dwellTime / 1000).toFixed(1)}s
+                </Text>
+              </View>
+            </View>
+            <View style={styles.sliderContainer}>
+              <Text style={styles.sliderLabel}>0.5s</Text>
+              <View style={styles.sliderWrapper}>
+                <View
+                  style={[
+                    styles.sliderTrack,
+                    { width: `${((dwellTime - 500) / 2500) * 100}%` },
+                  ]}
+                />
+              </View>
+              <Text style={styles.sliderLabel}>3.0s</Text>
+            </View>
+            <View style={styles.sliderButtons}>
+              <TouchableOpacity
+                style={styles.sliderButton}
+                onPress={() => setDwellTime(Math.max(500, dwellTime - 100))}
+              >
+                <Text>-</Text>
+              </TouchableOpacity>
+              <Text style={styles.sliderValue}>{(dwellTime / 1000).toFixed(1)}s</Text>
+              <TouchableOpacity
+                style={styles.sliderButton}
+                onPress={() => setDwellTime(Math.min(3000, dwellTime + 100))}
+              >
+                <Text>+</Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
       </View>
 
       {/* Voice & TTS Settings Section */}

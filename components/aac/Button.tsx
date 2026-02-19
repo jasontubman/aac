@@ -14,6 +14,8 @@ import { useSpeech } from '../../hooks/useSpeech';
 import { useSubscriptionStore } from '../../store/subscriptionStore';
 import { useAccessibility } from '../../hooks/useAccessibility';
 import { DwellSelector } from '../accessibility/DwellSelector';
+import { usageAnalytics } from '../../services/usageAnalytics';
+import { isValidImageUri } from '../../utils/performance';
 
 interface AACButtonProps {
   button: ButtonType;
@@ -23,7 +25,7 @@ interface AACButtonProps {
 }
 
 export const AACButton = memo<AACButtonProps>(({ button, size = 100, onPress, style }) => {
-  const { addToSentence } = useAACStore();
+  const { addToSentence, currentBoard } = useAACStore();
   const { speak } = useSpeech();
   const { isFeatureAvailable } = useSubscriptionStore();
   const { settings } = useAccessibility();
@@ -36,11 +38,20 @@ export const AACButton = memo<AACButtonProps>(({ button, size = 100, onPress, st
       return;
     }
 
+    // Log button tap
+    if (currentBoard) {
+      await usageAnalytics.logButtonTap(button.id, button.label, currentBoard.id);
+    }
+
     // Add to sentence
     addToSentence(button);
     
-    // Speak immediately
-    await speak(button.speech_text);
+    // Speak immediately if speech_text exists
+    if (button.speech_text && button.speech_text.trim().length > 0) {
+      await speak(button.speech_text);
+    } else {
+      console.warn('Button has no speech_text:', button.label, button.id);
+    }
   };
 
   const buttonSize = Math.max(size, getTouchTargetSize(defaultAccessibilityTheme));
@@ -63,11 +74,18 @@ export const AACButton = memo<AACButtonProps>(({ button, size = 100, onPress, st
       accessibilityHint={`Speaks: ${button.speech_text}`}
       accessibilityRole="button"
     >
-      {(button.symbol_path || button.image_path) && (
+      {(button.symbol_path && isValidImageUri(button.symbol_path)) && (
         <Image
-          source={{ uri: button.symbol_path || button.image_path }}
+          source={{ uri: button.symbol_path }}
           style={styles.image}
-          resizeMode={button.symbol_path ? 'contain' : 'cover'}
+          resizeMode="contain"
+        />
+      )}
+      {(button.image_path && isValidImageUri(button.image_path)) && (
+        <Image
+          source={{ uri: button.image_path }}
+          style={styles.image}
+          resizeMode="cover"
         />
       )}
       <Text style={styles.label} numberOfLines={2}>

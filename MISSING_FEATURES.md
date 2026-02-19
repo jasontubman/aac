@@ -5,7 +5,7 @@ Based on the implementation plan, here are the critical features that are missin
 ## ✅ Implemented Features
 
 - Core vocabulary board with motor-plan stable positioning
-- Sentence builder with visual feedback
+- Sentence builder with visual feedback and Speak button
 - Tap-to-speak functionality
 - Kid mode + caregiver gate
 - Routine management (create/edit routines)
@@ -24,6 +24,14 @@ Based on the implementation plan, here are the critical features that are missin
 - **Dwell selection** (integrated into buttons)
 - **Fallback mode enforcement** (core board only when expired)
 - **Improved subscription screen** (trial days remaining, upgrade from trial, RevenueCat paywall always used)
+- **Profile management** (create, edit, delete, switch profiles with avatars)
+- **Board duplication** (copy boards with all buttons)
+- **Toast notifications** (better user feedback)
+- **Confirmation dialogs** (for destructive actions)
+- **Improved empty states** (helpful messages and actions)
+- **Loading states** (consistent loading indicators)
+- **Accessibility improvements** (labels, hints, roles)
+- **Fixed back button navigation** (no more header shifting)
 
 ## ❌ Missing Critical Features
 

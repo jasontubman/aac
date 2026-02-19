@@ -40,6 +40,7 @@ import { SymbolPicker } from './SymbolPicker';
 import { BoardSearch } from './BoardSearch';
 import * as ImagePicker from 'expo-image-picker';
 import type { SymbolResult } from '../../services/symbolLibrary';
+import { isValidImageUri } from '../../utils/performance';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const GRID_PADDING = spacing.md;
@@ -670,13 +671,13 @@ export const BoardEditor: React.FC<BoardEditorProps> = ({
               <Text style={styles.label}>Image</Text>
               {(buttonImagePath || buttonSymbolPath) && (
                 <View style={styles.previewContainer}>
-                  {buttonImagePath && (
+                  {buttonImagePath && isValidImageUri(buttonImagePath) && (
                     <Image
                       source={{ uri: buttonImagePath }}
                       style={styles.previewImage}
                     />
                   )}
-                  {buttonSymbolPath && (
+                  {buttonSymbolPath && isValidImageUri(buttonSymbolPath) && (
                     <Image
                       source={{ uri: buttonSymbolPath }}
                       style={styles.previewImage}
@@ -864,7 +865,7 @@ const DraggableButton: React.FC<DraggableButtonProps> = ({
           onLongPress={onLongPress}
           activeOpacity={0.7}
         >
-          {button.image_path && (
+          {button.image_path && isValidImageUri(button.image_path) && (
             <Image
               source={{ uri: button.image_path }}
               style={styles.buttonImage}

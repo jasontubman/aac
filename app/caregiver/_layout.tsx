@@ -1,5 +1,6 @@
 import { Stack } from 'expo-router';
 import { colors, typography } from '../../theme';
+import { CustomBackButton } from '../../components/navigation/CustomBackButton';
 
 export default function CaregiverLayout() {
   return (
@@ -14,6 +15,8 @@ export default function CaregiverLayout() {
           ...typography.heading.h2,
           fontWeight: '600',
         },
+        headerBackTitle: '', // Prevent long back button text
+        headerLeft: () => <CustomBackButton />, // Custom back button with "Back" text
         contentStyle: {
           backgroundColor: colors.background.light,
         },

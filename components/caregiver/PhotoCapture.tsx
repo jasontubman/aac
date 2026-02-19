@@ -22,6 +22,7 @@ import {
   saveImageToAppDirectory,
 } from '../../utils/imageProcessing';
 import { useAACStore } from '../../store/aacStore';
+import { isValidImageUri } from '../../utils/performance';
 
 interface PhotoCaptureProps {
   boardId: string;
@@ -136,7 +137,7 @@ export const PhotoCapture: React.FC<PhotoCaptureProps> = ({
     }
   };
 
-  if (capturedImage) {
+  if (capturedImage && isValidImageUri(capturedImage)) {
     return (
       <View style={styles.container}>
         <Image source={{ uri: capturedImage }} style={styles.preview} />

@@ -170,6 +170,6 @@ const styles = StyleSheet.create({
   },
   emptySubtext: {
     ...typography.body.small,
-    color: colors.text.tertiary,
+    color: colors.text.secondary,
   },
 });
