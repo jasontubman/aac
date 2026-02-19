@@ -6,7 +6,6 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "scheme": "aac",
     "splash": {
       "image": "./assets/splash-icon.png",
@@ -40,7 +39,6 @@
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE"
       ],
-      "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
     "web": {
@@ -63,10 +61,7 @@
         "projectId": ""
       }
     },
-    "privacy": "public",
     "description": "Simple, private, affordable AAC for kids. Offline-first communication support.",
-    "keywords": ["AAC", "communication", "kids", "offline", "accessibility"],
-    "primaryColor": "#0ea5e9",
-    "sdkVersion": "54.0.33"
+    "primaryColor": "#0ea5e9"
   }
 }

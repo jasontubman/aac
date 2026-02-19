@@ -1,7 +1,7 @@
-import { MMKV } from 'react-native-mmkv';
+import { createMMKV } from 'react-native-mmkv';
 
 // MMKV storage instance
-const storage = new MMKV({
+const storage = createMMKV({
   id: 'aac-storage',
   encryptionKey: 'aac-encryption-key', // In production, this should be generated securely
 });
@@ -77,7 +77,7 @@ export const mmkvStorage = {
 
   // Delete
   delete: (key: string): void => {
-    storage.delete(key);
+    storage.remove(key);
   },
 
   // Check if key exists

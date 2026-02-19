@@ -1,13 +1,52 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Linking } from 'react-native';
+import { useRouter } from 'expo-router';
 import { colors, spacing, typography } from '../../theme';
+import { POLICY_URLS, shouldUseInAppScreens } from '../../utils/policyUrls';
 
 export default function PrivacyScreen() {
+  const router = useRouter();
+  const [useInApp, setUseInApp] = useState(true);
+
+  useEffect(() => {
+    setUseInApp(shouldUseInAppScreens());
+  }, []);
+
+  const handleOpenHostedPolicy = async () => {
+    if (POLICY_URLS.privacy) {
+      const canOpen = await Linking.canOpenURL(POLICY_URLS.privacy);
+      if (canOpen) {
+        await Linking.openURL(POLICY_URLS.privacy);
+      } else {
+        alert('Unable to open privacy policy. Please check your internet connection.');
+      }
+    }
+  };
+
   const handleDeleteData = () => {
     // Data deletion would be implemented here
     // This would clear all local data including profiles, boards, etc.
     alert('Data deletion feature will be implemented');
   };
+
+  // If using hosted URLs, show a link to open them
+  if (!useInApp && POLICY_URLS.privacy) {
+    return (
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        <Text style={styles.title}>Privacy Policy</Text>
+        <Text style={styles.text}>
+          Our Privacy Policy is available online. Click the button below to view it in your browser.
+        </Text>
+        <TouchableOpacity style={styles.button} onPress={handleOpenHostedPolicy}>
+          <Text style={styles.buttonText}>Open Privacy Policy</Text>
+        </TouchableOpacity>
+        <Text style={styles.footerText}>
+          You can also access it at:{'\n'}
+          <Text style={styles.link}>{POLICY_URLS.privacy}</Text>
+        </Text>
+      </ScrollView>
+    );
+  }
 
   return (
     <ScrollView style={styles.container}>
@@ -79,6 +118,27 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background.light,
     padding: spacing.md,
+  },
+  content: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: spacing.xl,
+  },
+  button: {
+    backgroundColor: colors.primary[500],
+    padding: spacing.md,
+    borderRadius: 8,
+    marginTop: spacing.lg,
+    marginBottom: spacing.lg,
+  },
+  buttonText: {
+    ...typography.button.medium,
+    color: colors.text.light,
+  },
+  link: {
+    color: colors.primary[600],
+    textDecorationLine: 'underline',
   },
   title: {
     ...typography.heading.h1,

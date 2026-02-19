@@ -1,19 +1,48 @@
-import Purchases, { CustomerInfo, PurchasesOffering, PurchasesPackage } from 'react-native-purchases';
+import Purchases, { 
+  CustomerInfo, 
+  PurchasesOffering, 
+  PurchasesPackage,
+  PurchasesError,
+  PURCHASES_ERROR_CODE,
+} from 'react-native-purchases';
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 import { appStorage } from './storage';
 import { entitlementCache } from './entitlementCache';
 import {
   SUBSCRIPTION_PRODUCTS,
+  ENTITLEMENT_IDENTIFIER,
   TRIAL_DAYS,
   GRACE_PERIOD_DAYS,
   SubscriptionStatus,
 } from '../utils/constants';
 import type { SubscriptionEntitlement } from '../store/subscriptionStore';
 
-// RevenueCat API key (should be set via environment variables in production)
-const REVENUECAT_API_KEY = {
-  ios: 'your_ios_api_key_here',
-  android: 'your_android_api_key_here',
+// RevenueCat API Key (test key for development)
+// In production, use environment variables
+const REVENUECAT_API_KEY = 'test_sceaVJYxWTNqFLWkHQAZFXsYUnN';
+
+// Get RevenueCat API keys from Expo config (set via environment variables) or use test key
+const getRevenueCatApiKey = (): string => {
+  // First try to get from environment variables
+  const config = Constants.expoConfig?.extra?.revenueCatApiKey;
+  
+  if (config) {
+    const platformKey = Platform.OS === 'ios' ? config.ios : config.android;
+    
+    if (platformKey && platformKey !== 'your_ios_api_key_here' && platformKey !== 'your_android_api_key_here') {
+      return platformKey;
+    }
+  }
+
+  // Fallback to test key if environment variables not set
+  // In production, you should always use environment variables
+  if (__DEV__) {
+    console.warn('Using test RevenueCat API key. Set REVENUECAT_API_KEY_IOS and REVENUECAT_API_KEY_ANDROID for production.');
+    return REVENUECAT_API_KEY;
+  }
+
+  throw new Error(`RevenueCat API key not configured for ${Platform.OS}. Please set environment variables.`);
 };
 
 let isInitialized = false;
@@ -25,7 +54,11 @@ export async function initializeRevenueCat(userId?: string): Promise<void> {
   }
 
   try {
-    const apiKey = Platform.OS === 'ios' ? REVENUECAT_API_KEY.ios : REVENUECAT_API_KEY.android;
+    const apiKey = getRevenueCatApiKey();
+    
+    if (!apiKey) {
+      throw new Error(`RevenueCat API key not configured for ${Platform.OS}. Please set environment variables.`);
+    }
     
     await Purchases.configure({ apiKey });
     
@@ -51,7 +84,7 @@ export async function getOfferings(): Promise<PurchasesOffering | null> {
   }
 }
 
-// Purchase subscription
+// Purchase subscription with comprehensive error handling
 export async function purchaseSubscription(
   packageToPurchase: PurchasesPackage
 ): Promise<CustomerInfo> {
@@ -60,11 +93,27 @@ export async function purchaseSubscription(
     await updateEntitlementCache(customerInfo);
     return customerInfo;
   } catch (error: any) {
-    if (error.userCancelled) {
+    const purchasesError = error as PurchasesError;
+    
+    // Handle specific error cases
+    if (purchasesError.code === PURCHASES_ERROR_CODE.PURCHASE_CANCELLED_ERROR) {
       throw new Error('Purchase cancelled');
     }
-    console.error('Error purchasing subscription:', error);
-    throw error;
+    
+    if (purchasesError.code === PURCHASES_ERROR_CODE.PAYMENT_PENDING_ERROR) {
+      throw new Error('Payment is pending. Please complete the payment.');
+    }
+    
+    if (purchasesError.code === PURCHASES_ERROR_CODE.PURCHASE_INVALID_ERROR) {
+      throw new Error('Purchase is invalid. Please try again.');
+    }
+    
+    if (purchasesError.code === PURCHASES_ERROR_CODE.NETWORK_ERROR) {
+      throw new Error('Network error. Please check your connection and try again.');
+    }
+    
+    console.error('Error purchasing subscription:', purchasesError);
+    throw new Error(purchasesError.message || 'An error occurred during purchase');
   }
 }
 
@@ -92,7 +141,7 @@ export async function getCustomerInfo(): Promise<CustomerInfo> {
 
 // Update entitlement cache from RevenueCat customer info
 async function updateEntitlementCache(customerInfo: CustomerInfo): Promise<void> {
-  const entitlement = customerInfo.entitlements.active['premium_access'];
+  const entitlement = customerInfo.entitlements.active[ENTITLEMENT_IDENTIFIER];
   const now = Date.now();
 
   let status: SubscriptionStatus = 'uninitialized';
@@ -100,9 +149,16 @@ async function updateEntitlementCache(customerInfo: CustomerInfo): Promise<void>
   let productId: string | null = null;
 
   if (entitlement) {
-    // Active subscription
-    status = 'active_subscribed';
-    expiresAt = entitlement.expirationDate ? new Date(entitlement.expirationDate).getTime() : null;
+    // Active subscription or lifetime purchase
+    if (entitlement.willRenew === false) {
+      // Lifetime purchase - never expires
+      status = 'active_subscribed';
+      expiresAt = null; // Lifetime never expires
+    } else {
+      // Subscription with renewal
+      status = 'active_subscribed';
+      expiresAt = entitlement.expirationDate ? new Date(entitlement.expirationDate).getTime() : null;
+    }
     productId = entitlement.productIdentifier || null;
   } else {
     // Check if we have a cached entitlement
@@ -176,6 +232,19 @@ export function validateSubscriptionStatus(
   }
 
   return 'expired_limited_mode';
+}
+
+// Check if user has Easy AAC Pro entitlement
+export async function hasProEntitlement(): Promise<boolean> {
+  try {
+    const customerInfo = await getCustomerInfo();
+    return customerInfo.entitlements.active[ENTITLEMENT_IDENTIFIER] !== undefined;
+  } catch (error) {
+    console.error('Error checking entitlement:', error);
+    // Fallback to cached entitlement
+    const cached = appStorage.getSubscriptionEntitlement();
+    return cached?.status === 'active_subscribed' || cached?.status === 'trial_active';
+  }
 }
 
 // Check if feature is available

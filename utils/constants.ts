@@ -1,14 +1,19 @@
 // App constants
 
-// Subscription products
+// Subscription products (RevenueCat product identifiers)
 export const SUBSCRIPTION_PRODUCTS = {
-  MONTHLY: 'monthly_subscription',
-  ANNUAL: 'annual_subscription',
+  MONTHLY: 'monthly',
+  ANNUAL: 'yearly',
+  LIFETIME: 'lifetime',
 } as const;
+
+// Entitlement identifier
+export const ENTITLEMENT_IDENTIFIER = 'easy_aac_pro';
 
 export const SUBSCRIPTION_PRICES = {
   MONTHLY: 4.99,
   ANNUAL: 34.99,
+  LIFETIME: 99.99, // Example lifetime price
 } as const;
 
 export const TRIAL_DAYS = 14;

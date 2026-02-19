@@ -69,18 +69,18 @@ A production-ready, offline-first Augmentative and Alternative Communication (AA
 /utils             # Utility functions
 ```
 
-## Setup
+## Quick Start
 
 1. Install dependencies:
 ```bash
 npm install
 ```
 
-2. Configure RevenueCat:
-   - Update `services/subscription.ts` with your RevenueCat API keys
-   - Set up products in RevenueCat dashboard:
-     - `monthly_subscription` - $4.99/month
-     - `annual_subscription` - $34.99/year
+2. Configure environment variables (see `ENV_SETUP.md`):
+```bash
+cp .env.example .env
+# Edit .env with your RevenueCat API keys
+```
 
 3. Run the app:
 ```bash
@@ -89,15 +89,10 @@ npm start
 
 ## Configuration
 
-### App Store Setup
-
-Update `app.json` with:
-- Bundle identifier (iOS)
-- Package name (Android)
-- RevenueCat API keys
-- Subscription product IDs
-
-### Database
+See `ENV_SETUP.md` for detailed setup instructions including:
+- RevenueCat API key configuration
+- Environment variable setup
+- Production deployment
 
 The database is automatically initialized on first launch. Core vocabulary boards are created for each profile.
 
@@ -118,33 +113,15 @@ The database is automatically initialized on first launch. Core vocabulary board
 - ✅ COPPA-conscious
 - ✅ App Store compliant
 
-## Development Status
+## Documentation
 
-### Completed ✅
-- Project setup and architecture
-- Database schema and queries
-- Theme system
-- Core AAC components
-- Speech service
-- Kid/caregiver modes
-- Subscription integration
-- State management
-- Storage services
-- Navigation structure
-
-### In Progress 🚧
-- Profile management UI
-- Board editor
-- Routine system
-- Emotion flow
-- Photo personalization
-- Accessibility features (switch scanning, dwell selection)
-
-### Planned 📋
-- Testing infrastructure
-- Performance optimization
-- App Store submission
-- Documentation
+- `ENV_SETUP.md` - Environment variables and API key configuration
+- `APP_STORE_COMPLIANCE.md` - App Store compliance checklist
+- `SUBMISSION_CHECKLIST.md` - Pre-submission checklist
+- `BEHAVIOR_DETECTION.md` - Behavior detection feature guide
+- `SYMBOL_LIBRARY_GUIDE.md` - AAC symbol library integration
+- `PRIVACY_MANIFEST.md` - iOS Privacy Manifest configuration
+- `policies/HOSTING_GUIDE.md` - Policy document hosting guide
 
 ## License
 

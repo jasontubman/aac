@@ -1,14 +1,19 @@
 // Expo app configuration
-// This file can be used for dynamic configuration
-// For now, app.json contains the static configuration
+// Load environment variables from .env file if it exists
+require('dotenv').config();
+
+const appJson = require('./app.json');
 
 module.exports = {
   expo: {
-    // Configuration is in app.json
-    // This file can be used for environment-specific configs
+    ...appJson.expo,
     extra: {
-      // Add environment variables here if needed
-      revenueCatApiKey: process.env.REVENUECAT_API_KEY || '',
+      ...appJson.expo.extra,
+      // RevenueCat API keys from environment variables
+      revenueCatApiKey: {
+        ios: process.env.REVENUECAT_API_KEY_IOS || process.env.REVENUECAT_API_KEY || '',
+        android: process.env.REVENUECAT_API_KEY_ANDROID || process.env.REVENUECAT_API_KEY || '',
+      },
     },
   },
 };

@@ -1,12 +1,50 @@
-import React from 'react';
-import { View, Text, ScrollView, StyleSheet, Linking } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Linking } from 'react-native';
+import { useRouter } from 'expo-router';
 import { colors, spacing, typography } from '../../theme';
+import { POLICY_URLS, shouldUseInAppScreens } from '../../utils/policyUrls';
 
 export default function TermsScreen() {
-  const handleOpenPrivacy = () => {
-    // Navigate to privacy policy
-    // In production, this could open a web URL or navigate to privacy screen
+  const router = useRouter();
+  const [useInApp, setUseInApp] = useState(true);
+
+  useEffect(() => {
+    setUseInApp(shouldUseInAppScreens());
+  }, []);
+
+  const handleOpenHostedTerms = async () => {
+    if (POLICY_URLS.terms) {
+      const canOpen = await Linking.canOpenURL(POLICY_URLS.terms);
+      if (canOpen) {
+        await Linking.openURL(POLICY_URLS.terms);
+      } else {
+        alert('Unable to open terms of service. Please check your internet connection.');
+      }
+    }
   };
+
+  const handleOpenPrivacy = () => {
+    router.push('/caregiver/privacy');
+  };
+
+  // If using hosted URLs, show a link to open them
+  if (!useInApp && POLICY_URLS.terms) {
+    return (
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        <Text style={styles.title}>Terms of Service</Text>
+        <Text style={styles.text}>
+          Our Terms of Service are available online. Click the button below to view them in your browser.
+        </Text>
+        <TouchableOpacity style={styles.button} onPress={handleOpenHostedTerms}>
+          <Text style={styles.buttonText}>Open Terms of Service</Text>
+        </TouchableOpacity>
+        <Text style={styles.footerText}>
+          You can also access it at:{'\n'}
+          <Text style={styles.link}>{POLICY_URLS.terms}</Text>
+        </Text>
+      </ScrollView>
+    );
+  }
 
   return (
     <ScrollView style={styles.container}>
@@ -116,6 +154,27 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background.light,
     padding: spacing.md,
+  },
+  content: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: spacing.xl,
+  },
+  button: {
+    backgroundColor: colors.primary[500],
+    padding: spacing.md,
+    borderRadius: 8,
+    marginTop: spacing.lg,
+    marginBottom: spacing.lg,
+  },
+  buttonText: {
+    ...typography.button.medium,
+    color: colors.text.light,
+  },
+  link: {
+    color: colors.primary[600],
+    textDecorationLine: 'underline',
   },
   title: {
     ...typography.heading.h1,

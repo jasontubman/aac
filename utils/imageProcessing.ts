@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system';
+import { Directory, File, Paths } from 'expo-file-system';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 
 // Simple image processing utilities
@@ -117,25 +117,21 @@ export async function saveImageToAppDirectory(
   filename: string
 ): Promise<string> {
   try {
-    const documentDirectory = FileSystem.documentDirectory;
-    if (!documentDirectory) {
-      throw new Error('Document directory not available');
-    }
+    const imagesDir = new Directory(Paths.document, 'images');
     
-    const appDir = documentDirectory + 'images/';
-    const dirInfo = await FileSystem.getInfoAsync(appDir);
-    
-    if (!dirInfo.exists) {
-      await FileSystem.makeDirectoryAsync(appDir, { intermediates: true });
+    if (!imagesDir.exists) {
+      imagesDir.create();
     }
 
-    const newPath = appDir + filename;
-    await FileSystem.copyAsync({
-      from: uri,
-      to: newPath,
-    });
-
-    return newPath;
+    // Create source file from URI
+    // If URI is already a file path, use it directly; otherwise create a File instance
+    const sourceFile = new File(uri);
+    const destinationFile = new File(imagesDir, filename);
+    
+    // Copy the file
+    sourceFile.copy(destinationFile);
+    
+    return destinationFile.uri;
   } catch (error) {
     console.error('Error saving image:', error);
     throw error;

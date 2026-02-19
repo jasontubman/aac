@@ -9,10 +9,12 @@ import {
   Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Linking } from 'react-native';
 import { colors, spacing, borderRadius, typography } from '../../theme';
 import { useProfileStore } from '../../store/profileStore';
 import { appStorage } from '../../services/storage';
 import type { ProfileSettings } from '../../database/types';
+import { POLICY_URLS, shouldUseInAppScreens } from '../../utils/policyUrls';
 
 interface AdvancedFeatures {
   behaviorDetection: boolean;
@@ -233,13 +235,31 @@ export default function SettingsScreen() {
         <Text style={styles.sectionTitle}>Legal</Text>
         <TouchableOpacity
           style={styles.linkButton}
-          onPress={() => router.push('/caregiver/privacy')}
+          onPress={async () => {
+            if (shouldUseInAppScreens() || !POLICY_URLS.privacy) {
+              router.push('/caregiver/privacy');
+            } else {
+              const canOpen = await Linking.canOpenURL(POLICY_URLS.privacy);
+              if (canOpen) {
+                await Linking.openURL(POLICY_URLS.privacy);
+              }
+            }
+          }}
         >
           <Text style={styles.linkButtonText}>Privacy Policy</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.linkButton}
-          onPress={() => router.push('/caregiver/terms')}
+          onPress={async () => {
+            if (shouldUseInAppScreens() || !POLICY_URLS.terms) {
+              router.push('/caregiver/terms');
+            } else {
+              const canOpen = await Linking.canOpenURL(POLICY_URLS.terms);
+              if (canOpen) {
+                await Linking.openURL(POLICY_URLS.terms);
+              }
+            }
+          }}
         >
           <Text style={styles.linkButtonText}>Terms of Service</Text>
         </TouchableOpacity>

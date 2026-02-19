@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { colors, spacing, borderRadius, typography } from '../../theme';
 import { restorePurchases } from '../../services/subscription';
+import { presentCustomerCenter } from '../../services/revenueCatCustomerCenter';
 import { useSubscriptionStore } from '../../store/subscriptionStore';
 
 export const RestorePurchases: React.FC = () => {
@@ -21,16 +22,39 @@ export const RestorePurchases: React.FC = () => {
     }
   };
 
+  const handleCustomerCenter = async () => {
+    try {
+      await presentCustomerCenter();
+      // Refresh after customer center is dismissed
+      initialize();
+    } catch (error: any) {
+      // User cancellation is fine, don't show error
+      if (error.message && !error.message.includes('cancelled')) {
+        Alert.alert('Error', 'Unable to open customer center.');
+      }
+    }
+  };
+
   return (
-    <TouchableOpacity
-      style={styles.button}
-      onPress={handleRestore}
-      disabled={restoring}
-    >
-      <Text style={styles.buttonText}>
-        {restoring ? 'Restoring...' : 'Restore Purchases'}
-      </Text>
-    </TouchableOpacity>
+    <View>
+      <TouchableOpacity
+        style={styles.button}
+        onPress={handleRestore}
+        disabled={restoring}
+      >
+        <Text style={styles.buttonText}>
+          {restoring ? 'Restoring...' : 'Restore Purchases'}
+        </Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[styles.button, styles.customerCenterButton]}
+        onPress={handleCustomerCenter}
+      >
+        <Text style={styles.customerCenterButtonText}>
+          Manage Subscription (Customer Center)
+        </Text>
+      </TouchableOpacity>
+    </View>
   );
 };
 
@@ -46,5 +70,15 @@ const styles = StyleSheet.create({
   buttonText: {
     ...typography.button.medium,
     color: colors.text.primary,
+  },
+  customerCenterButton: {
+    backgroundColor: colors.primary[50],
+    borderColor: colors.primary[300],
+    borderWidth: 1,
+    marginTop: spacing.sm,
+  },
+  customerCenterButtonText: {
+    ...typography.button.medium,
+    color: colors.primary[600],
   },
 });
