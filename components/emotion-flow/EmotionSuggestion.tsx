@@ -51,10 +51,7 @@ export const EmotionSuggestion: React.FC<EmotionSuggestionProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    position: 'absolute',
-    bottom: 20,
-    left: spacing.md,
-    right: spacing.md,
+    width: '100%',
     zIndex: 1000,
   },
   content: {

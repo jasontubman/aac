@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { EmotionSelector } from '../../components/emotion-flow/EmotionSelector';
 import { NeedSelector } from '../../components/emotion-flow/NeedSelector';
 import { SpeakButton } from '../../components/emotion-flow/SpeakButton';
+import { DashboardViewSwitcher } from '../../components/navigation/DashboardViewSwitcher';
 import { useSubscriptionStore } from '../../store/subscriptionStore';
 import { colors, typography } from '../../theme';
 
@@ -19,6 +21,7 @@ interface SelectedNeed {
 }
 
 export default function EmotionFlowScreen() {
+  const insets = useSafeAreaInsets();
   const { isFeatureAvailable } = useSubscriptionStore();
   const [step, setStep] = useState<FlowStep>('emotion');
   const [selectedEmotion, setSelectedEmotion] = useState<SelectedEmotion | null>(null);
@@ -52,7 +55,7 @@ export default function EmotionFlowScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       {step === 'emotion' && (
         <EmotionSelector onSelect={handleEmotionSelect} />
       )}
@@ -71,6 +74,7 @@ export default function EmotionFlowScreen() {
           onBack={() => setStep('need')}
         />
       )}
+      <DashboardViewSwitcher currentView="emotion-flow" />
     </View>
   );
 }

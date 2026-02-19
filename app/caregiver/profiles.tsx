@@ -537,6 +537,7 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
     width: '90%',
     maxWidth: 400,
+    maxHeight: '80%',
   },
   modalTitle: {
     ...typography.heading.h2,

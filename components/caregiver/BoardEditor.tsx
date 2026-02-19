@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,16 +10,11 @@ import {
   Image,
   Modal,
   Dimensions,
-  Platform,
+  Pressable,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { GestureDetector, Gesture } from 'react-native-gesture-handler';
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-  runOnJS,
-} from 'react-native-reanimated';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { DropProvider, Draggable, Droppable } from 'react-native-reanimated-dnd';
 import { colors, spacing, borderRadius, typography } from '../../theme';
 import { useProfileStore } from '../../store/profileStore';
 import { useSubscriptionStore } from '../../store/subscriptionStore';
@@ -39,12 +34,16 @@ import { PhotoCapture } from './PhotoCapture';
 import { SymbolPicker } from './SymbolPicker';
 import { BoardSearch } from './BoardSearch';
 import * as ImagePicker from 'expo-image-picker';
-import type { SymbolResult } from '../../services/symbolLibrary';
 import { isValidImageUri } from '../../utils/performance';
+import { ConfirmationDialog } from '../common/ConfirmationDialog';
+import { useToast } from '../../hooks/useToast';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const GRID_PADDING = spacing.md;
 const GRID_GAP = spacing.sm;
+
+// Global registry for drop handlers - module-level to avoid closure serialization issues
+const dropTargetsRegistry = new Map<string, { x: number; y: number; handler: ((data: any, target: { x: number; y: number }) => void) | null }>();
 
 interface BoardEditorProps {
   boardId?: string;
@@ -55,7 +54,6 @@ interface BoardEditorProps {
 interface GridButton extends Button {
   x: number;
   y: number;
-  isDragging?: boolean;
 }
 
 export const BoardEditor: React.FC<BoardEditorProps> = ({
@@ -66,6 +64,7 @@ export const BoardEditor: React.FC<BoardEditorProps> = ({
   const insets = useSafeAreaInsets();
   const { activeProfile } = useProfileStore();
   const { isFeatureAvailable } = useSubscriptionStore();
+  const { success, error: showError, ToastContainer } = useToast();
   const [board, setBoard] = useState<Board | null>(null);
   const [buttons, setButtons] = useState<GridButton[]>([]);
   const [boardName, setBoardName] = useState('');
@@ -80,9 +79,14 @@ export const BoardEditor: React.FC<BoardEditorProps> = ({
   const [buttonSpeechText, setButtonSpeechText] = useState('');
   const [buttonImagePath, setButtonImagePath] = useState<string | null>(null);
   const [buttonSymbolPath, setButtonSymbolPath] = useState<string | null>(null);
-  const [draggedButtonId, setDraggedButtonId] = useState<string | null>(null);
-  const [editMode, setEditMode] = useState(true);
   const [targetPosition, setTargetPosition] = useState<{ x: number; y: number } | null>(null);
+  const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
+  const [buttonToDelete, setButtonToDelete] = useState<Button | null>(null);
+  const [draggingButtonId, setDraggingButtonId] = useState<string | null>(null);
+  const handleDropRef = useRef<((draggedData: { buttonId: string; x: number; y: number }, dropTarget: { x: number; y: number }) => Promise<void>) | null>(null);
+  const setDraggingButtonIdRef = useRef<((id: string | null) => void) | null>(null);
+  // Map of cell coordinates to drop handlers - used to avoid closure serialization issues
+  const dropHandlersRef = useRef<Map<string, (data: any) => void>>(new Map());
 
   // Calculate grid dimensions
   const gridWidth = SCREEN_WIDTH - GRID_PADDING * 2;
@@ -107,16 +111,19 @@ export const BoardEditor: React.FC<BoardEditorProps> = ({
 
         const boardButtons = await getButtonsByBoard(boardId);
         // Convert position to x, y coordinates
-        const gridButtons = boardButtons.map((btn) => {
-          const pos = btn.position;
-          const x = pos % boardData.grid_cols;
-          const y = Math.floor(pos / boardData.grid_cols);
-          return { ...btn, x, y };
-        });
+        const gridButtons = boardButtons
+          .sort((a, b) => a.position - b.position)
+          .map((btn) => {
+            const pos = btn.position;
+            const x = pos % boardData.grid_cols;
+            const y = Math.floor(pos / boardData.grid_cols);
+            return { ...btn, x, y };
+          });
         setButtons(gridButtons);
       }
     } catch (error) {
       console.error('Error loading board:', error);
+      showError('Failed to load board');
     }
   };
 
@@ -139,66 +146,32 @@ export const BoardEditor: React.FC<BoardEditorProps> = ({
   const handleSaveBoard = async () => {
     if (!activeProfile) return;
 
-    // Validate grid size changes
-    if (board && buttons.length > 0) {
-      const buttonsOutsideBounds = buttons.filter(
-        (btn) => btn.x >= gridCols || btn.y >= gridRows
-      );
-      if (buttonsOutsideBounds.length > 0) {
-        Alert.alert(
-          'Warning',
-          `Some buttons are outside the new grid size. They will be repositioned.`,
-          [
-            { text: 'Cancel', style: 'cancel' },
-            {
-              text: 'Continue',
-              onPress: async () => {
-                await saveBoardWithRepositioning();
-              },
-            },
-          ]
-        );
-        return;
-      }
-    }
-
-    await saveBoardWithRepositioning();
-  };
-
-  const saveBoardWithRepositioning = async () => {
-    if (!activeProfile) return;
-
     try {
       if (board) {
-        // Reposition buttons that are outside bounds
-        const buttonsToUpdate: Promise<void>[] = [];
-        buttons.forEach((btn) => {
-          if (btn.x >= gridCols || btn.y >= gridRows) {
-            // Find next available position
-            let newPos = 0;
-            let found = false;
-            for (let y = 0; y < gridRows && !found; y++) {
-              for (let x = 0; x < gridCols && !found; x++) {
-                const pos = positionToIndex(x, y);
-                const occupied = buttons.some(
-                  (b) => b.id !== btn.id && positionToIndex(b.x, b.y) === pos
-                );
-                if (!occupied) {
-                  newPos = pos;
-                  found = true;
-                }
-              }
-            }
-            buttonsToUpdate.push(updateButton(btn.id, { position: newPos }));
-          }
-        });
-        await Promise.all(buttonsToUpdate);
-
+        console.log('Saving board:', { boardId: board.id, name: boardName, gridCols, gridRows, buttonCount: buttons.length });
+        
+        // Save board settings
         await updateBoard(board.id, {
           name: boardName,
           grid_cols: gridCols,
           grid_rows: gridRows,
         });
+        console.log('Board settings saved');
+        
+        // Save all button positions based on current grid size
+        // This ensures positions are valid after grid size changes
+        const positionUpdates = buttons.map((btn) => {
+          const position = positionToIndex(btn.x, btn.y);
+          console.log(`Saving button ${btn.id} position:`, { x: btn.x, y: btn.y, position });
+          return updateButton(btn.id, { position });
+        });
+        
+        if (positionUpdates.length > 0) {
+          await Promise.all(positionUpdates);
+          console.log(`Saved ${positionUpdates.length} button positions`);
+        }
+        
+        success('Board settings saved!');
       } else {
         const newBoardId = generateId();
         await createBoard(
@@ -219,12 +192,12 @@ export const BoardEditor: React.FC<BoardEditorProps> = ({
           created_at: Date.now(),
           updated_at: Date.now(),
         });
+        success('Board created!');
       }
       await loadBoard();
-      onSave?.();
     } catch (error) {
-      Alert.alert('Error', 'Failed to save board');
       console.error('Error saving board:', error);
+      showError('Failed to save board');
     }
   };
 
@@ -234,6 +207,7 @@ export const BoardEditor: React.FC<BoardEditorProps> = ({
     setButtonSpeechText('');
     setButtonImagePath(null);
     setButtonSymbolPath(null);
+    setTargetPosition(null);
     setShowButtonModal(true);
   };
 
@@ -258,7 +232,7 @@ export const BoardEditor: React.FC<BoardEditorProps> = ({
 
   const handleSaveButton = async () => {
     if (!board || !activeProfile || !buttonLabel || !buttonSpeechText) {
-      Alert.alert('Error', 'Please fill in all required fields');
+      showError('Please fill in all required fields');
       return;
     }
 
@@ -270,30 +244,39 @@ export const BoardEditor: React.FC<BoardEditorProps> = ({
           image_path: buttonImagePath || editingButton.image_path,
           symbol_path: buttonSymbolPath || null,
         });
+        success('Button updated!');
       } else {
-        // Use target position if set (from tapping empty cell), otherwise find next available
-        let nextPosition: number;
+        // Use target position if set, otherwise find next available
+        let nextPosition!: number;
         if (targetPosition) {
           nextPosition = positionToIndex(targetPosition.x, targetPosition.y);
-          // Check if position is already taken
           const existingButton = buttons.find(
             (b) => b.x === targetPosition.x && b.y === targetPosition.y
           );
           if (existingButton) {
-            Alert.alert('Error', 'This position is already taken.');
+            showError('This position is already taken.');
             setTargetPosition(null);
             return;
           }
         } else {
-          const maxPosition = buttons.length > 0 
-            ? Math.max(...buttons.map(b => positionToIndex(b.x, b.y)))
-            : -1;
-          nextPosition = maxPosition + 1;
+          const occupiedPositions = new Set(buttons.map(b => positionToIndex(b.x, b.y)));
+          let foundEmpty = false;
+          for (let i = 0; i < gridRows * gridCols; i++) {
+            if (!occupiedPositions.has(i)) {
+              nextPosition = i;
+              foundEmpty = true;
+              break;
+            }
+          }
+          if (!foundEmpty) {
+            showError('Board is full. Increase grid size or remove buttons.');
+            return;
+          }
         }
         
         const { x, y } = indexToPosition(nextPosition);
         if (y >= gridRows) {
-          Alert.alert('Error', 'Board is full. Increase grid size or remove buttons.');
+          showError('Board is full. Increase grid size or remove buttons.');
           setTargetPosition(null);
           return;
         }
@@ -307,9 +290,10 @@ export const BoardEditor: React.FC<BoardEditorProps> = ({
           buttonImagePath || `asset://button/${newButtonId}.png`,
           nextPosition,
           buttonSymbolPath || null,
-          null // color
+          null
         );
         setTargetPosition(null);
+        success('Button created!');
       }
       await loadBoard();
       setShowButtonModal(false);
@@ -317,34 +301,36 @@ export const BoardEditor: React.FC<BoardEditorProps> = ({
       setButtonLabel('');
       setButtonSpeechText('');
       setButtonImagePath(null);
+      setButtonSymbolPath(null);
       setTargetPosition(null);
     } catch (error) {
-      Alert.alert('Error', 'Failed to save button');
       console.error('Error saving button:', error);
+      showError('Failed to save button');
     }
   };
 
-  const handleDeleteButton = async (buttonId: string) => {
-    Alert.alert('Delete Button', 'Are you sure?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await deleteButton(buttonId);
-            await loadBoard();
-          } catch (error) {
-            Alert.alert('Error', 'Failed to delete button');
-          }
-        },
-      },
-    ]);
+  const handleDeleteButton = (button: Button) => {
+    setButtonToDelete(button);
+    setDeleteConfirmVisible(true);
+  };
+
+  const confirmDeleteButton = async () => {
+    if (!buttonToDelete) return;
+    try {
+      await deleteButton(buttonToDelete.id);
+      success('Button deleted!');
+      await loadBoard();
+    } catch (error) {
+      console.error('Error deleting button:', error);
+      showError('Failed to delete button');
+    } finally {
+      setDeleteConfirmVisible(false);
+      setButtonToDelete(null);
+    }
   };
 
   const handleDeleteBoard = async () => {
     if (!board) return;
-
     Alert.alert('Delete Board', 'Are you sure? This cannot be undone.', [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -355,47 +341,264 @@ export const BoardEditor: React.FC<BoardEditorProps> = ({
             await deleteBoard(board.id);
             onCancel?.();
           } catch (error) {
-            Alert.alert('Error', 'Failed to delete board');
+            console.error('Error deleting board:', error);
+            showError('Failed to delete board');
           }
         },
       },
     ]);
   };
 
-  const handleButtonDrag = useCallback(
-    async (buttonId: string, newX: number, newY: number) => {
-      if (newX < 0 || newX >= gridCols || newY < 0 || newY >= gridRows) {
-        return; // Out of bounds
+  // Handle drag and drop
+  const handleDrop = useCallback(
+    async (draggedData: { buttonId: string; x: number; y: number }, dropTarget: { x: number; y: number }) => {
+      console.log('handleDrop called:', { draggedData, dropTarget, gridCols });
+      const draggedButton = buttons.find((b) => b.id === draggedData.buttonId);
+      if (!draggedButton) {
+        console.warn('Dragged button not found:', draggedData.buttonId);
+        return;
       }
 
-      const newPosition = positionToIndex(newX, newY);
-      const existingButton = buttons.find(
-        (b) => b.id !== buttonId && b.x === newX && b.y === newY
-      );
+      const fromIndex = positionToIndex(draggedButton.x, draggedButton.y);
+      const toIndex = positionToIndex(dropTarget.x, dropTarget.y);
 
-      try {
-        if (existingButton) {
-          // Swap positions
-          const oldButton = buttons.find((b) => b.id === buttonId);
-          if (oldButton) {
-            const oldPosition = positionToIndex(oldButton.x, oldButton.y);
-            await Promise.all([
-              updateButton(existingButton.id, { position: oldPosition }),
-              updateButton(buttonId, { position: newPosition }),
-            ]);
+      console.log('Position indices:', { fromIndex, toIndex, gridCols });
+
+      if (fromIndex === toIndex) return;
+
+      const targetButton = buttons.find((b) => b.x === dropTarget.x && b.y === dropTarget.y && b.id !== draggedData.buttonId);
+      
+      // Optimistically update UI
+      const oldButtons = [...buttons];
+      let newButtons: GridButton[];
+      
+      if (targetButton) {
+        // Swap positions
+        newButtons = buttons.map((btn) => {
+          if (btn.id === draggedData.buttonId) {
+            return { ...btn, x: dropTarget.x, y: dropTarget.y };
           }
+          if (btn.id === targetButton.id) {
+            return { ...btn, x: draggedButton.x, y: draggedButton.y };
+          }
+          return btn;
+        });
+      } else {
+        // Move to empty cell
+        newButtons = buttons.map((btn) => {
+          if (btn.id === draggedData.buttonId) {
+            return { ...btn, x: dropTarget.x, y: dropTarget.y };
+          }
+          return btn;
+        });
+      }
+      
+      setButtons(newButtons);
+      
+      // Update database
+      try {
+        const newPosition = positionToIndex(dropTarget.x, dropTarget.y);
+        const updates: Promise<void>[] = [];
+        
+        if (targetButton) {
+          const oldPosition = positionToIndex(draggedButton.x, draggedButton.y);
+          updates.push(
+            updateButton(draggedData.buttonId, { position: newPosition }),
+            updateButton(targetButton.id, { position: oldPosition })
+          );
         } else {
-          // Move to empty cell
-          await updateButton(buttonId, { position: newPosition });
+          updates.push(updateButton(draggedData.buttonId, { position: newPosition }));
         }
-        await loadBoard();
+        
+        await Promise.all(updates);
+        console.log('Database updates completed');
+        
+        // Update positions in state
+        const finalButtons = newButtons.map((btn) => ({
+          ...btn,
+          position: positionToIndex(btn.x, btn.y),
+        }));
+        setButtons(finalButtons);
+        success('Button moved!');
       } catch (error) {
         console.error('Error moving button:', error);
-        Alert.alert('Error', 'Failed to move button');
+        // Revert on error
+        setButtons(oldButtons);
+        showError('Failed to move button');
       }
     },
-    [buttons, gridCols, gridRows, positionToIndex]
+    [buttons, positionToIndex, success, showError, gridCols]
   );
+
+  // Update refs when functions change
+  useEffect(() => {
+    handleDropRef.current = handleDrop;
+    // Also update all registered drop handlers with the new function
+    dropTargetsRegistry.forEach((entry) => {
+      entry.handler = handleDrop;
+    });
+  }, [handleDrop]);
+
+  useEffect(() => {
+    setDraggingButtonIdRef.current = setDraggingButtonId;
+  }, []);
+
+  // Stable wrapper functions for worklet callbacks
+  // These are wrapped in useCallback to ensure stable references for runOnJS
+  const handleDragStart = useCallback((buttonId: string) => {
+    if (setDraggingButtonIdRef.current) {
+      setDraggingButtonIdRef.current(buttonId);
+    }
+  }, []);
+
+  const handleDragEnd = useCallback(() => {
+    if (setDraggingButtonIdRef.current) {
+      setDraggingButtonIdRef.current(null);
+    }
+  }, []);
+
+  // Create serializable drop handlers using module-level registry
+  // This avoids closure serialization issues since the handler function has no closures
+  const getDropHandler = useCallback((x: number, y: number) => {
+    const droppableId = `cell-${x}-${y}`;
+    
+    // Update global registry with current handler and coordinates
+    dropTargetsRegistry.set(droppableId, {
+      x,
+      y,
+      handler: handleDropRef.current,
+    });
+    
+    // Create a function with NO closures - store droppableId as a property
+    // This makes it serializable by react-native-worklets
+    const handler: any = function(draggedData: any) {
+      // Read droppableId from function property, not closure
+      const id = (handler as any).__droppableId;
+      const entry = dropTargetsRegistry.get(id);
+      if (!entry || !entry.handler) {
+        console.warn('Drop handler not found in registry:', id);
+        return;
+      }
+      if (draggedData && typeof draggedData === 'object' && 'buttonId' in draggedData) {
+        entry.handler(draggedData as { buttonId: string; x: number; y: number }, { x: entry.x, y: entry.y });
+      }
+    };
+    // Store droppableId as property to avoid closure
+    (handler as any).__droppableId = droppableId;
+    return handler;
+  }, []);
+
+  // Render grid button
+  const renderGridButton = (button: GridButton) => {
+    const isDragging = draggingButtonId === button.id;
+    
+    return (
+      <Draggable
+        key={button.id}
+        data={{ buttonId: button.id, x: button.x, y: button.y }}
+        onDragStart={() => {
+          handleDragStart(button.id);
+        }}
+        onDragEnd={() => {
+          handleDragEnd();
+        }}
+        style={[
+          styles.draggableButton,
+          {
+            width: cellSize,
+            height: cellSize,
+          },
+          isDragging && styles.draggableButtonActive,
+        ]}
+      >
+        <Pressable
+          style={[
+            styles.gridButton,
+            {
+              backgroundColor: button.color || colors.button.default,
+            },
+          ]}
+          onPress={() => {
+            if (!isDragging) {
+              setEditingButton(button);
+              setButtonLabel(button.label);
+              setButtonSpeechText(button.speech_text);
+              setButtonImagePath(button.image_path);
+              setButtonSymbolPath(button.symbol_path || null);
+              setShowButtonModal(true);
+            }
+          }}
+          onLongPress={() => {
+            if (!isDragging) {
+              handleDeleteButton(button);
+            }
+          }}
+          delayLongPress={500}
+        >
+          {(button.symbol_path && isValidImageUri(button.symbol_path)) && (
+            <Image
+              source={{ uri: button.symbol_path }}
+              style={styles.gridButtonImage}
+              resizeMode="contain"
+            />
+          )}
+          {(button.image_path && isValidImageUri(button.image_path) && !button.symbol_path) && (
+            <Image
+              source={{ uri: button.image_path }}
+              style={styles.gridButtonImage}
+              resizeMode="cover"
+            />
+          )}
+          <Text style={styles.gridButtonLabel} numberOfLines={2}>
+            {button.label}
+          </Text>
+        </Pressable>
+      </Draggable>
+    );
+  };
+
+  // Render grid cell
+  const renderGridCell = (index: number) => {
+    const { x, y } = indexToPosition(index);
+    const button = buttons.find((b) => b.x === x && b.y === y);
+
+    return (
+      <Droppable
+        key={`cell-${index}`}
+        droppableId={`cell-${x}-${y}`}
+        onDrop={getDropHandler(x, y)}
+        style={[
+          styles.gridCell,
+          {
+            width: cellSize,
+            height: cellSize,
+            marginRight: x < gridCols - 1 ? GRID_GAP : 0,
+            marginBottom: y < gridRows - 1 ? GRID_GAP : 0,
+          },
+        ]}
+        activeStyle={styles.gridCellActive}
+      >
+        {button ? (
+          renderGridButton(button)
+        ) : (
+          <Pressable
+            style={styles.emptyCell}
+            onPress={() => {
+              setTargetPosition({ x, y });
+              setEditingButton(null);
+              setButtonLabel('');
+              setButtonSpeechText('');
+              setButtonImagePath(null);
+              setButtonSymbolPath(null);
+              setShowButtonModal(true);
+            }}
+          >
+            <Text style={styles.emptyCellText}>+</Text>
+          </Pressable>
+        )}
+      </Droppable>
+    );
+  };
 
   if (!isFeatureAvailable('board_editing')) {
     return (
@@ -421,203 +624,147 @@ export const BoardEditor: React.FC<BoardEditorProps> = ({
   }
 
   return (
-    <View style={styles.container}>
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xl }}
-      >
-        {/* Board Settings */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Board Settings</Text>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Board Name</Text>
-            <TextInput
-              style={styles.input}
-              value={boardName}
-              onChangeText={setBoardName}
-              placeholder="Enter board name"
-            />
+    <GestureHandlerRootView style={styles.container}>
+      <DropProvider>
+        <ToastContainer />
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
+        >
+          {/* Header */}
+          <View style={styles.header}>
+            <Text style={styles.headerTitle}>
+              {board ? 'Edit Board' : 'Create Board'}
+            </Text>
           </View>
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Grid Size</Text>
-            <View style={styles.gridControls}>
-              <View style={styles.gridControlGroup}>
-                <Text style={styles.gridLabel}>Columns</Text>
-                <View style={styles.gridButtons}>
-                  <TouchableOpacity
-                    style={styles.gridButton}
-                    onPress={() => setGridCols(Math.max(2, gridCols - 1))}
-                  >
-                    <Text style={styles.gridButtonText}>-</Text>
-                  </TouchableOpacity>
-                  <Text style={styles.gridValue}>{gridCols}</Text>
-                  <TouchableOpacity
-                    style={styles.gridButton}
-                    onPress={() => setGridCols(Math.min(6, gridCols + 1))}
-                  >
-                    <Text style={styles.gridButtonText}>+</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              <View style={styles.gridControlGroup}>
-                <Text style={styles.gridLabel}>Rows</Text>
-                <View style={styles.gridButtons}>
-                  <TouchableOpacity
-                    style={styles.gridButton}
-                    onPress={() => setGridRows(Math.max(2, gridRows - 1))}
-                  >
-                    <Text style={styles.gridButtonText}>-</Text>
-                  </TouchableOpacity>
-                  <Text style={styles.gridValue}>{gridRows}</Text>
-                  <TouchableOpacity
-                    style={styles.gridButton}
-                    onPress={() => setGridRows(Math.min(6, gridRows + 1))}
-                  >
-                    <Text style={styles.gridButtonText}>+</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </View>
-          </View>
-
-          <TouchableOpacity style={styles.saveButton} onPress={handleSaveBoard}>
-            <Text style={styles.saveButtonText}>Save Board Settings</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Visual Grid Editor */}
-        {board && (
+          {/* Board Settings */}
           <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Board Layout</Text>
-              <View style={styles.headerButtons}>
-                <TouchableOpacity
-                  style={styles.searchButton}
-                  onPress={() => setShowSearch(true)}
-                >
-                  <Text style={styles.searchButtonText}>🔍 Search</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.addButton}
-                  onPress={handleAddButton}
-                >
-                  <Text style={styles.addButtonText}>+ Add Button</Text>
-                </TouchableOpacity>
-              </View>
+            <Text style={styles.sectionTitle}>Board Settings</Text>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Board Name</Text>
+              <TextInput
+                style={styles.input}
+                value={boardName}
+                onChangeText={setBoardName}
+                placeholder="Enter board name"
+                placeholderTextColor={colors.text.secondary}
+              />
             </View>
 
-            <View style={styles.gridContainer}>
-              <View
-                style={[
-                  styles.grid,
-                  {
-                    width: gridWidth,
-                    height: (cellSize + GRID_GAP) * gridRows - GRID_GAP,
-                  },
-                ]}
-              >
-                {Array.from({ length: gridRows * gridCols }).map((_, index) => {
-                  const { x, y } = indexToPosition(index);
-                  const button = buttons.find((b) => b.x === x && b.y === y);
-                  return (
-                    <View
-                      key={index}
-                      style={[
-                        styles.gridCell,
-                        {
-                          width: cellSize,
-                          height: cellSize,
-                          marginRight: x < gridCols - 1 ? GRID_GAP : 0,
-                          marginBottom: y < gridRows - 1 ? GRID_GAP : 0,
-                        },
-                      ]}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Grid Size</Text>
+              <View style={styles.gridControls}>
+                <View style={styles.gridControlGroup}>
+                  <Text style={styles.gridLabel}>Columns</Text>
+                  <View style={styles.gridButtons}>
+                    <TouchableOpacity
+                      style={styles.gridButtonControl}
+                      onPress={() => setGridCols(Math.max(2, gridCols - 1))}
                     >
-                      {button && (
-                        <DraggableButton
-                          button={button}
-                          size={cellSize}
-                          onPress={() => {
-                            setEditingButton(button);
-                            setButtonLabel(button.label);
-                            setButtonSpeechText(button.speech_text);
-                            setButtonImagePath(button.image_path);
-                            setButtonSymbolPath(button.symbol_path || null);
-                            setShowButtonModal(true);
-                          }}
-                          onLongPress={() => {
-                            if (editMode) {
-                              handleDeleteButton(button.id);
-                            }
-                          }}
-                          onDragEnd={(newX, newY) =>
-                            handleButtonDrag(button.id, newX, newY)
-                          }
-                          gridCols={gridCols}
-                          gridRows={gridRows}
-                          editMode={editMode}
-                        />
-                      )}
-                      {!button && editMode && (
-                        <TouchableOpacity
-                          style={styles.emptyCell}
-                          onPress={() => {
-                            const { x: cellX, y: cellY } = indexToPosition(index);
-                            setTargetPosition({ x: cellX, y: cellY });
-                            setEditingButton(null);
-                            setButtonLabel('');
-                            setButtonSpeechText('');
-                            setButtonImagePath(null);
-                            setShowButtonModal(true);
-                          }}
-                        >
-                          <Text style={styles.emptyCellText}>+</Text>
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                  );
-                })}
+                      <Text style={styles.gridButtonControlText}>−</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.gridValue}>{gridCols}</Text>
+                    <TouchableOpacity
+                      style={styles.gridButtonControl}
+                      onPress={() => setGridCols(Math.min(6, gridCols + 1))}
+                    >
+                      <Text style={styles.gridButtonControlText}>+</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                <View style={styles.gridControlGroup}>
+                  <Text style={styles.gridLabel}>Rows</Text>
+                  <View style={styles.gridButtons}>
+                    <TouchableOpacity
+                      style={styles.gridButtonControl}
+                      onPress={() => setGridRows(Math.max(2, gridRows - 1))}
+                    >
+                      <Text style={styles.gridButtonControlText}>−</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.gridValue}>{gridRows}</Text>
+                    <TouchableOpacity
+                      style={styles.gridButtonControl}
+                      onPress={() => setGridRows(Math.min(6, gridRows + 1))}
+                    >
+                      <Text style={styles.gridButtonControlText}>+</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
               </View>
             </View>
 
-            <View style={styles.editModeToggle}>
-              <TouchableOpacity
-                style={[
-                  styles.toggleButton,
-                  editMode && styles.toggleButtonActive,
-                ]}
-                onPress={() => setEditMode(!editMode)}
-              >
-                <Text
+            <TouchableOpacity style={styles.saveBoardButton} onPress={handleSaveBoard}>
+              <Text style={styles.saveBoardButtonText}>💾 Save Board Settings</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Grid View */}
+          {board && (
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Board Layout</Text>
+                <View style={styles.headerActions}>
+                  <TouchableOpacity
+                    style={styles.actionButton}
+                    onPress={() => setShowSearch(true)}
+                  >
+                    <Text style={styles.actionButtonText}>🔍</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.actionButton}
+                    onPress={handleAddButton}
+                  >
+                    <Text style={styles.actionButtonText}>+</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <View style={styles.gridContainer}>
+                <View
                   style={[
-                    styles.toggleButtonText,
-                    editMode && styles.toggleButtonTextActive,
+                    styles.grid,
+                    {
+                      width: gridWidth,
+                      height: (cellSize + GRID_GAP) * gridRows - GRID_GAP,
+                    },
                   ]}
                 >
-                  {editMode ? 'Edit Mode' : 'Preview Mode'}
-                </Text>
-              </TouchableOpacity>
+                  {Array.from({ length: gridRows * gridCols }).map((_, index) =>
+                    renderGridCell(index)
+                  )}
+                </View>
+              </View>
+
+              <Text style={styles.hintText}>
+                💡 Long press a button to delete, drag to move
+              </Text>
             </View>
-          </View>
-        )}
+          )}
 
-        {board && (
-          <TouchableOpacity
-            style={styles.deleteBoardButton}
-            onPress={handleDeleteBoard}
-          >
-            <Text style={styles.deleteBoardButtonText}>Delete Board</Text>
+          {/* Delete Board */}
+          {board && (
+            <TouchableOpacity
+              style={styles.deleteBoardButton}
+              onPress={handleDeleteBoard}
+            >
+              <Text style={styles.deleteBoardButtonText}>🗑️ Delete Board</Text>
+            </TouchableOpacity>
+          )}
+        </ScrollView>
+
+        {/* Sticky Footer */}
+        <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.md }]}>
+          <TouchableOpacity style={styles.cancelFooterButton} onPress={onCancel}>
+            <Text style={styles.cancelFooterButtonText}>Cancel</Text>
           </TouchableOpacity>
-        )}
-
-        <View style={styles.actions}>
-          <TouchableOpacity style={styles.cancelButton} onPress={onCancel}>
-            <Text style={styles.cancelButtonText}>Done</Text>
+          <TouchableOpacity style={styles.doneFooterButton} onPress={onSave || onCancel}>
+            <Text style={styles.doneFooterButtonText}>✓ Done</Text>
           </TouchableOpacity>
         </View>
-      </ScrollView>
+      </DropProvider>
 
       {/* Button Editor Modal */}
       <Modal
@@ -641,7 +788,7 @@ export const BoardEditor: React.FC<BoardEditorProps> = ({
                 setTargetPosition(null);
               }}
             >
-              <Text style={styles.modalClose}>Cancel</Text>
+              <Text style={styles.modalClose}>✕</Text>
             </TouchableOpacity>
           </View>
 
@@ -653,16 +800,18 @@ export const BoardEditor: React.FC<BoardEditorProps> = ({
                 value={buttonLabel}
                 onChangeText={setButtonLabel}
                 placeholder="e.g., 'More'"
+                placeholderTextColor={colors.text.secondary}
               />
             </View>
 
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Speech Text</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, styles.multilineInput]}
                 value={buttonSpeechText}
                 onChangeText={setButtonSpeechText}
                 placeholder="e.g., 'I want more'"
+                placeholderTextColor={colors.text.secondary}
                 multiline
               />
             </View>
@@ -690,7 +839,7 @@ export const BoardEditor: React.FC<BoardEditorProps> = ({
                   style={styles.imageButton}
                   onPress={handleSelectPhoto}
                 >
-                  <Text style={styles.imageButtonText}>Choose Photo</Text>
+                  <Text style={styles.imageButtonText}>📷 Choose Photo</Text>
                 </TouchableOpacity>
                 {board && (
                   <TouchableOpacity
@@ -700,7 +849,7 @@ export const BoardEditor: React.FC<BoardEditorProps> = ({
                       setShowPhotoCapture(true);
                     }}
                   >
-                    <Text style={styles.imageButtonText}>Take Photo</Text>
+                    <Text style={styles.imageButtonText}>📸 Take Photo</Text>
                   </TouchableOpacity>
                 )}
                 <TouchableOpacity
@@ -709,7 +858,7 @@ export const BoardEditor: React.FC<BoardEditorProps> = ({
                     setShowSymbolPicker(true);
                   }}
                 >
-                  <Text style={styles.imageButtonText}>Choose Symbol</Text>
+                  <Text style={styles.imageButtonText}>🎨 Choose Symbol</Text>
                 </TouchableOpacity>
                 {(buttonImagePath || buttonSymbolPath) && (
                   <TouchableOpacity
@@ -719,7 +868,7 @@ export const BoardEditor: React.FC<BoardEditorProps> = ({
                       setButtonSymbolPath(null);
                     }}
                   >
-                    <Text style={styles.removeButtonText}>Remove Image</Text>
+                    <Text style={styles.removeButtonText}>🗑️ Remove</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -728,8 +877,11 @@ export const BoardEditor: React.FC<BoardEditorProps> = ({
             <TouchableOpacity
               style={styles.saveButton}
               onPress={handleSaveButton}
+              disabled={!buttonLabel.trim() || !buttonSpeechText.trim()}
             >
-              <Text style={styles.saveButtonText}>Save Button</Text>
+              <Text style={styles.saveButtonText}>
+                {editingButton ? '💾 Save Changes' : '✨ Create Button'}
+              </Text>
             </TouchableOpacity>
           </ScrollView>
         </View>
@@ -765,119 +917,21 @@ export const BoardEditor: React.FC<BoardEditorProps> = ({
           onClose={() => setShowSearch(false)}
         />
       )}
-    </View>
-  );
-};
 
-// Draggable Button Component
-interface DraggableButtonProps {
-  button: GridButton;
-  size: number;
-  onPress: () => void;
-  onLongPress: () => void;
-  onDragEnd: (x: number, y: number) => void;
-  gridCols: number;
-  gridRows: number;
-  editMode: boolean;
-}
-
-const DraggableButton: React.FC<DraggableButtonProps> = ({
-  button,
-  size,
-  onPress,
-  onLongPress,
-  onDragEnd,
-  gridCols,
-  gridRows,
-  editMode,
-}) => {
-  const translateX = useSharedValue(0);
-  const translateY = useSharedValue(0);
-  const startX = useSharedValue(0);
-  const startY = useSharedValue(0);
-  const isDragging = useSharedValue(false);
-
-  const gesture = Gesture.Pan()
-    .enabled(editMode)
-    .onStart(() => {
-      startX.value = translateX.value;
-      startY.value = translateY.value;
-      isDragging.value = true;
-    })
-    .onUpdate((e) => {
-      translateX.value = startX.value + e.translationX;
-      translateY.value = startY.value + e.translationY;
-    })
-    .onEnd(() => {
-      const cellSize = size;
-      const cellWithGap = cellSize + GRID_GAP;
-      
-      // Calculate new grid position based on total translation
-      const totalX = button.x * cellWithGap + translateX.value;
-      const totalY = button.y * cellWithGap + translateY.value;
-      
-      const newX = Math.round(totalX / cellWithGap);
-      const newY = Math.round(totalY / cellWithGap);
-
-      const clampedX = Math.max(0, Math.min(newX, gridCols - 1));
-      const clampedY = Math.max(0, Math.min(newY, gridRows - 1));
-      
-      // Only trigger drag end if position actually changed
-      if (clampedX !== button.x || clampedY !== button.y) {
-        runOnJS(onDragEnd)(clampedX, clampedY);
-      } else {
-        // Reset position if didn't move to new cell
-        translateX.value = withSpring(0);
-        translateY.value = withSpring(0);
-      }
-      
-      isDragging.value = false;
-
-      translateX.value = withSpring(0);
-      translateY.value = withSpring(0);
-      isDragging.value = false;
-    });
-
-  const animatedStyle = useAnimatedStyle(() => {
-    return {
-      transform: [
-        { translateX: translateX.value },
-        { translateY: translateY.value },
-      ],
-      zIndex: isDragging.value ? 1000 : 1,
-      opacity: isDragging.value ? 0.8 : 1,
-    };
-  });
-
-  return (
-    <GestureDetector gesture={gesture}>
-      <Animated.View style={[styles.draggableButton, animatedStyle]}>
-        <TouchableOpacity
-          style={[
-            styles.buttonPreview,
-            {
-              width: size,
-              height: size,
-              backgroundColor: button.color || colors.button.default,
-            },
-          ]}
-          onPress={onPress}
-          onLongPress={onLongPress}
-          activeOpacity={0.7}
-        >
-          {button.image_path && isValidImageUri(button.image_path) && (
-            <Image
-              source={{ uri: button.image_path }}
-              style={styles.buttonImage}
-              resizeMode="cover"
-            />
-          )}
-          <Text style={styles.buttonPreviewLabel} numberOfLines={2}>
-            {button.label}
-          </Text>
-        </TouchableOpacity>
-      </Animated.View>
-    </GestureDetector>
+      <ConfirmationDialog
+        visible={deleteConfirmVisible}
+        title="Delete Button"
+        message={`Are you sure you want to delete "${buttonToDelete?.label}"?`}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        onConfirm={confirmDeleteButton}
+        onCancel={() => {
+          setDeleteConfirmVisible(false);
+          setButtonToDelete(null);
+        }}
+        destructive={true}
+      />
+    </GestureHandlerRootView>
   );
 };
 
@@ -888,10 +942,20 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+    padding: spacing.md,
+  },
+  header: {
+    paddingBottom: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.neutral[200],
+    marginBottom: spacing.lg,
+  },
+  headerTitle: {
+    ...typography.heading.h1,
+    color: colors.text.primary,
   },
   section: {
     marginBottom: spacing.xl,
-    padding: spacing.md,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -899,40 +963,53 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: spacing.md,
   },
-  headerButtons: {
+  sectionTitle: {
+    ...typography.heading.h2,
+    color: colors.text.primary,
+    marginBottom: spacing.sm,
+  },
+  hintText: {
+    ...typography.body.small,
+    color: colors.text.secondary,
+    textAlign: 'center',
+    marginTop: spacing.md,
+    fontStyle: 'italic',
+  },
+  headerActions: {
     flexDirection: 'row',
     gap: spacing.sm,
   },
-  searchButton: {
-    backgroundColor: colors.neutral[200],
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+  actionButton: {
+    width: 40,
+    height: 40,
     borderRadius: borderRadius.md,
+    backgroundColor: colors.primary[500],
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  searchButtonText: {
-    ...typography.button.small,
-    color: colors.text.primary,
-  },
-  sectionTitle: {
-    ...typography.heading.h2,
-    marginBottom: spacing.md,
-    color: colors.text.primary,
+  actionButtonText: {
+    fontSize: 20,
+    color: colors.text.light,
   },
   inputGroup: {
-    marginBottom: spacing.md,
+    marginBottom: spacing.lg,
   },
   label: {
     ...typography.label.medium,
-    marginBottom: spacing.xs,
+    marginBottom: spacing.sm,
     color: colors.text.primary,
   },
   input: {
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral[300],
     borderRadius: borderRadius.md,
     padding: spacing.md,
     ...typography.body.medium,
     backgroundColor: colors.background.light,
+  },
+  multilineInput: {
+    minHeight: 80,
+    textAlignVertical: 'top',
   },
   gridControls: {
     flexDirection: 'row',
@@ -942,9 +1019,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   gridLabel: {
-    ...typography.label.small,
-    marginBottom: spacing.xs,
-    color: colors.text.secondary,
+    ...typography.label.medium,
+    marginBottom: spacing.sm,
+    color: colors.text.primary,
   },
   gridButtons: {
     flexDirection: 'row',
@@ -952,158 +1029,164 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.md,
   },
-  gridButton: {
-    width: 40,
-    height: 40,
+  gridButtonControl: {
+    width: 44,
+    height: 44,
     borderRadius: borderRadius.md,
     backgroundColor: colors.primary[500],
     justifyContent: 'center',
     alignItems: 'center',
   },
-  gridButtonText: {
-    ...typography.heading.h2,
+  gridButtonControlText: {
+    fontSize: 24,
     color: colors.text.light,
+    fontWeight: '700',
   },
   gridValue: {
     ...typography.heading.h2,
     minWidth: 40,
     textAlign: 'center',
+    color: colors.text.primary,
   },
-  saveButton: {
+  saveBoardButton: {
     backgroundColor: colors.primary[500],
     padding: spacing.md,
     borderRadius: borderRadius.lg,
     alignItems: 'center',
     marginTop: spacing.md,
   },
-  saveButtonText: {
+  saveBoardButtonText: {
     ...typography.button.medium,
-    color: colors.text.light,
-  },
-  addButton: {
-    backgroundColor: colors.secondary[500],
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.md,
-  },
-  addButtonText: {
-    ...typography.button.small,
     color: colors.text.light,
   },
   gridContainer: {
     alignItems: 'center',
-    marginVertical: spacing.md,
   },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    backgroundColor: colors.neutral[100],
-    padding: GRID_PADDING,
-    borderRadius: borderRadius.lg,
   },
   gridCell: {
-    position: 'relative',
-  },
-  emptyCell: {
-    width: '100%',
-    height: '100%',
-    borderWidth: 2,
-    borderColor: colors.neutral[300],
-    borderStyle: 'dashed',
-    borderRadius: borderRadius.md,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: colors.neutral[50],
+    borderRadius: borderRadius.md,
   },
-  emptyCellText: {
-    ...typography.heading.h1,
-    color: colors.neutral[400],
+  gridCellActive: {
+    backgroundColor: colors.primary[100],
+    borderWidth: 2,
+    borderColor: colors.primary[500],
+    borderRadius: borderRadius.md,
   },
   draggableButton: {
-    position: 'absolute',
+    borderRadius: borderRadius.md,
   },
-  buttonPreview: {
+  draggableButtonActive: {
+    opacity: 0.7,
+    transform: [{ scale: 1.05 }],
+    zIndex: 1000,
+    elevation: 10,
+  },
+  gridButton: {
+    width: '100%',
+    height: '100%',
     borderRadius: borderRadius.md,
     justifyContent: 'center',
     alignItems: 'center',
     padding: spacing.xs,
-    borderWidth: 2,
-    borderColor: colors.neutral[200],
+    borderWidth: 1,
+    borderColor: colors.neutral[300],
   },
-  buttonImage: {
+  gridButtonImage: {
     width: '60%',
     height: '60%',
     borderRadius: borderRadius.sm,
+    marginBottom: spacing.xs,
   },
-  buttonPreviewLabel: {
+  gridButtonLabel: {
     ...typography.body.small,
     color: colors.text.primary,
     textAlign: 'center',
-    marginTop: spacing.xs,
+    fontSize: 11,
+    fontWeight: '600',
   },
-  editModeToggle: {
-    alignItems: 'center',
-    marginTop: spacing.md,
-  },
-  toggleButton: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
+  emptyCell: {
+    width: '100%',
+    height: '100%',
     borderRadius: borderRadius.md,
-    backgroundColor: colors.neutral[200],
+    backgroundColor: colors.neutral[100],
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    borderColor: colors.neutral[300],
   },
-  toggleButtonActive: {
-    backgroundColor: colors.primary[500],
-  },
-  toggleButtonText: {
-    ...typography.button.small,
+  emptyCellText: {
+    fontSize: 32,
     color: colors.text.secondary,
-  },
-  toggleButtonTextActive: {
-    color: colors.text.light,
+    fontWeight: '300',
   },
   deleteBoardButton: {
     backgroundColor: colors.error,
     padding: spacing.md,
     borderRadius: borderRadius.lg,
     alignItems: 'center',
-    marginTop: spacing.xl,
-    marginHorizontal: spacing.md,
+    marginTop: spacing.md,
+    marginBottom: spacing.xl,
   },
   deleteBoardButtonText: {
     ...typography.button.medium,
     color: colors.text.light,
   },
-  actions: {
-    marginTop: spacing.xl,
-    marginBottom: spacing.xl,
+  footer: {
+    backgroundColor: colors.background.light,
+    borderTopWidth: 1,
+    borderTopColor: colors.neutral[200],
+    paddingTop: spacing.md,
     paddingHorizontal: spacing.md,
+    flexDirection: 'row',
+    gap: spacing.md,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 5,
   },
-  cancelButton: {
+  cancelFooterButton: {
+    flex: 1,
     backgroundColor: colors.neutral[200],
     padding: spacing.md,
     borderRadius: borderRadius.lg,
     alignItems: 'center',
+    minHeight: 56,
+    justifyContent: 'center',
   },
-  cancelButtonText: {
-    ...typography.button.medium,
+  cancelFooterButtonText: {
+    ...typography.button.large,
     color: colors.text.primary,
   },
-  errorText: {
-    ...typography.body.medium,
-    color: colors.error,
-    textAlign: 'center',
-    padding: spacing.xl,
+  doneFooterButton: {
+    flex: 1,
+    backgroundColor: colors.primary[500],
+    padding: spacing.md,
+    borderRadius: borderRadius.lg,
+    alignItems: 'center',
+    minHeight: 56,
+    justifyContent: 'center',
+  },
+  doneFooterButtonText: {
+    ...typography.button.large,
+    color: colors.text.light,
+    fontSize: 18,
   },
   modalContainer: {
     flex: 1,
     backgroundColor: colors.background.light,
-    paddingTop: Platform.OS === 'ios' ? 60 : 40,
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: spacing.md,
+    padding: spacing.lg,
     borderBottomWidth: 1,
     borderBottomColor: colors.neutral[200],
   },
@@ -1112,31 +1195,33 @@ const styles = StyleSheet.create({
     color: colors.text.primary,
   },
   modalClose: {
-    ...typography.button.medium,
-    color: colors.primary[500],
+    fontSize: 24,
+    color: colors.text.secondary,
   },
   modalContent: {
     flex: 1,
-    padding: spacing.md,
+    padding: spacing.lg,
   },
   previewContainer: {
-    flexDirection: 'row',
-    gap: spacing.md,
+    alignItems: 'center',
     marginBottom: spacing.md,
   },
   previewImage: {
     width: 150,
     height: 150,
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.neutral[100],
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: colors.neutral[300],
   },
   imageButtons: {
     flexDirection: 'row',
-    gap: spacing.md,
+    flexWrap: 'wrap',
+    gap: spacing.sm,
   },
   imageButton: {
     flex: 1,
-    backgroundColor: colors.secondary[500],
+    minWidth: '30%',
+    backgroundColor: colors.primary[500],
     padding: spacing.md,
     borderRadius: borderRadius.md,
     alignItems: 'center',
@@ -1149,7 +1234,23 @@ const styles = StyleSheet.create({
     backgroundColor: colors.error,
   },
   removeButtonText: {
-    ...typography.button.small,
     color: colors.text.light,
+  },
+  saveButton: {
+    backgroundColor: colors.primary[500],
+    padding: spacing.md,
+    borderRadius: borderRadius.lg,
+    alignItems: 'center',
+    marginTop: spacing.lg,
+  },
+  saveButtonText: {
+    ...typography.button.medium,
+    color: colors.text.light,
+  },
+  errorText: {
+    ...typography.body.medium,
+    color: colors.error,
+    textAlign: 'center',
+    padding: spacing.xl,
   },
 });

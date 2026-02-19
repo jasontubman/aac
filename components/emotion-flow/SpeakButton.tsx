@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '../../theme';
 import { useSpeech } from '../../hooks/useSpeech';
 
@@ -16,6 +17,7 @@ export const SpeakButton: React.FC<SpeakButtonProps> = ({
   onComplete,
   onBack,
 }) => {
+  const insets = useSafeAreaInsets();
   const { speak } = useSpeech();
   const fullText = `I feel ${emotionLabel.toLowerCase()}. ${needText}`;
 
@@ -27,7 +29,7 @@ export const SpeakButton: React.FC<SpeakButtonProps> = ({
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingBottom: insets.bottom + 100 }]}>
       <TouchableOpacity style={styles.backButton} onPress={onBack}>
         <Text style={styles.backButtonText} numberOfLines={1} ellipsizeMode="tail">← Back</Text>
       </TouchableOpacity>

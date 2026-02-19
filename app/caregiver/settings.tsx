@@ -46,6 +46,9 @@ export default function SettingsScreen() {
   const [dwellSelection, setDwellSelection] = useState(false);
   const [scanSpeed, setScanSpeed] = useState(1000); // milliseconds
   const [dwellTime, setDwellTime] = useState(1500); // milliseconds
+  const [routineAutoPlay, setRoutineAutoPlay] = useState(false);
+  const [routineShowPinnedOnly, setRoutineShowPinnedOnly] = useState(true);
+  const [routineButtonSize, setRoutineButtonSize] = useState<'normal' | 'large'>('normal');
 
   useEffect(() => {
     loadSettings();
@@ -64,9 +67,9 @@ export default function SettingsScreen() {
   const loadSettings = () => {
     if (!activeProfile) return;
 
-    const settings: ProfileSettings = JSON.parse(
+    const settings = JSON.parse(
       activeProfile.settings_json || '{}'
-    );
+    ) as ProfileSettings;
     const advanced: AdvancedFeatures = {
       behaviorDetection: settings.advancedFeatures?.behaviorDetection ?? false,
       emotionSuggestions: settings.advancedFeatures?.emotionSuggestions ?? false,
@@ -94,6 +97,11 @@ export default function SettingsScreen() {
     setDwellSelection(settings.dwellSelection || false);
     setScanSpeed(settings.scanSpeed ?? 1000);
     setDwellTime(settings.dwellTime ?? 1500);
+
+    // Routine settings
+    setRoutineAutoPlay(settings.routineAutoPlay ?? false);
+    setRoutineShowPinnedOnly(settings.routineShowPinnedOnly ?? true);
+    setRoutineButtonSize(settings.routineButtonSize ?? 'normal');
   };
 
   const saveSettings = async () => {
@@ -119,6 +127,9 @@ export default function SettingsScreen() {
       dwellSelection,
       scanSpeed,
       dwellTime,
+      routineAutoPlay,
+      routineShowPinnedOnly,
+      routineButtonSize,
     };
 
     await updateProfileSettings(activeProfile.id, settings);
@@ -126,9 +137,10 @@ export default function SettingsScreen() {
   };
 
   return (
+    <View style={styles.container}>
     <ScrollView 
-      style={styles.container}
-      contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xl }}
+      style={styles.scrollView}
+      contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
     >
 
       {/* Advanced Features Section */}
@@ -382,6 +394,91 @@ export default function SettingsScreen() {
         )}
       </View>
 
+      {/* Routine Settings Section */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Routine Settings</Text>
+        <Text style={styles.sectionDescription}>
+          Customize how routines work and display
+        </Text>
+
+        <View style={styles.settingRow}>
+          <View style={styles.settingInfo}>
+            <Text style={styles.settingLabel}>Show Pinned Buttons Only</Text>
+            <Text style={styles.settingDescription}>
+              When using a routine, show only the pinned buttons instead of all board buttons
+            </Text>
+          </View>
+          <Switch
+            value={routineShowPinnedOnly}
+            onValueChange={setRoutineShowPinnedOnly}
+            trackColor={{
+              false: colors.neutral[300],
+              true: colors.primary[500],
+            }}
+          />
+        </View>
+
+        <View style={styles.settingRow}>
+          <View style={styles.settingInfo}>
+            <Text style={styles.settingLabel}>Auto-Play Routine</Text>
+            <Text style={styles.settingDescription}>
+              Automatically speak routine buttons in sequence when routine is activated
+            </Text>
+          </View>
+          <Switch
+            value={routineAutoPlay}
+            onValueChange={setRoutineAutoPlay}
+            trackColor={{
+              false: colors.neutral[300],
+              true: colors.primary[500],
+            }}
+          />
+        </View>
+
+        <View style={styles.settingRow}>
+          <View style={styles.settingInfo}>
+            <Text style={styles.settingLabel}>Routine Button Size</Text>
+            <Text style={styles.settingDescription}>
+              Size of buttons when displaying routines
+            </Text>
+          </View>
+        </View>
+        <View style={styles.buttonSizePicker}>
+          <TouchableOpacity
+            style={[
+              styles.buttonSizeOption,
+              routineButtonSize === 'normal' && styles.buttonSizeOptionActive,
+            ]}
+            onPress={() => setRoutineButtonSize('normal')}
+          >
+            <Text
+              style={[
+                styles.buttonSizeOptionText,
+                routineButtonSize === 'normal' && styles.buttonSizeOptionTextActive,
+              ]}
+            >
+              Normal
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.buttonSizeOption,
+              routineButtonSize === 'large' && styles.buttonSizeOptionActive,
+            ]}
+            onPress={() => setRoutineButtonSize('large')}
+          >
+            <Text
+              style={[
+                styles.buttonSizeOptionText,
+                routineButtonSize === 'large' && styles.buttonSizeOptionTextActive,
+              ]}
+            >
+              Large
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
       {/* Voice & TTS Settings Section */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Voice & Speech</Text>
@@ -523,11 +620,6 @@ export default function SettingsScreen() {
         </Text>
       </View>
 
-      {/* Save Button */}
-      <TouchableOpacity style={styles.saveButton} onPress={saveSettings}>
-        <Text style={styles.saveButtonText}>Save Settings</Text>
-      </TouchableOpacity>
-
       {/* Legal Links */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Legal</Text>
@@ -577,6 +669,18 @@ export default function SettingsScreen() {
         </Text>
       </View>
     </ScrollView>
+    
+    {/* Sticky Save Button */}
+    <View style={[styles.stickyFooter, { paddingBottom: insets.bottom + spacing.md }]}>
+      <TouchableOpacity 
+        style={styles.saveButton} 
+        onPress={saveSettings}
+        activeOpacity={0.8}
+      >
+        <Text style={styles.saveButtonText}>💾 Save Settings</Text>
+      </TouchableOpacity>
+    </View>
+    </View>
   );
 }
 
@@ -584,6 +688,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background.light,
+  },
+  scrollView: {
+    flex: 1,
     padding: spacing.md,
   },
   section: {
@@ -624,17 +731,30 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
     fontSize: 12,
   },
+  stickyFooter: {
+    backgroundColor: colors.background.light,
+    borderTopWidth: 1,
+    borderTopColor: colors.neutral[200],
+    paddingTop: spacing.md,
+    paddingHorizontal: spacing.md,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 5,
+  },
   saveButton: {
     backgroundColor: colors.primary[500],
     padding: spacing.md,
     borderRadius: borderRadius.lg,
     alignItems: 'center',
-    marginTop: spacing.md,
-    marginBottom: spacing.xl,
+    minHeight: 56,
+    justifyContent: 'center',
   },
   saveButtonText: {
-    ...typography.button.medium,
+    ...typography.button.large,
     color: colors.text.light,
+    fontSize: 18,
   },
   infoSection: {
     marginTop: spacing.xl,
@@ -751,5 +871,31 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
     marginTop: spacing.sm,
     textAlign: 'center',
+  },
+  buttonSizePicker: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    marginBottom: spacing.md,
+  },
+  buttonSizeOption: {
+    flex: 1,
+    padding: spacing.md,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.neutral[200],
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  buttonSizeOptionActive: {
+    backgroundColor: colors.primary[500],
+    borderColor: colors.primary[600],
+  },
+  buttonSizeOptionText: {
+    ...typography.button.medium,
+    color: colors.text.primary,
+  },
+  buttonSizeOptionTextActive: {
+    color: colors.text.light,
+    fontWeight: '600',
   },
 });

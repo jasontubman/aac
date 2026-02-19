@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BoardGrid, SentenceBar, ClearButton } from '../../components/aac';
 import { EmotionSuggestion } from '../../components/emotion-flow/EmotionSuggestion';
+import { DashboardViewSwitcher } from '../../components/navigation/DashboardViewSwitcher';
 import { useAACStore } from '../../store/aacStore';
 import { useUIStore } from '../../store/uiStore';
 import { useProfileStore } from '../../store/profileStore';
@@ -143,21 +144,26 @@ export default function HomeScreen() {
         />
       </Pressable>
       <SentenceBar />
-      <View style={[styles.controls, { paddingBottom: insets.bottom + spacing.md }]}>
+      <View style={styles.controls}>
         <ClearButton onPress={handleClear} />
       </View>
       
       {/* Emotion Suggestion */}
       {showSuggestion && suggestedEmotion && (
-        <EmotionSuggestion
-          suggestedEmotion={suggestedEmotion}
-          onSelect={() => {
-            setShowSuggestion(false);
-            router.push('/emotion-flow');
-          }}
-          onDismiss={() => setShowSuggestion(false)}
-        />
+        <View style={styles.suggestionContainer}>
+          <EmotionSuggestion
+            suggestedEmotion={suggestedEmotion}
+            onSelect={() => {
+              setShowSuggestion(false);
+              router.push('/emotion-flow');
+            }}
+            onDismiss={() => setShowSuggestion(false)}
+          />
+        </View>
       )}
+      
+      {/* Dashboard View Switcher */}
+      <DashboardViewSwitcher currentView="board" />
     </View>
   );
 }
@@ -176,6 +182,15 @@ const styles = StyleSheet.create({
   },
   controls: {
     paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
     alignItems: 'center',
+  },
+  suggestionContainer: {
+    position: 'absolute',
+    bottom: 80,
+    left: 0,
+    right: 0,
+    zIndex: 100,
+    paddingHorizontal: spacing.md,
   },
 });

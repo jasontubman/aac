@@ -19,6 +19,9 @@ export interface ProfileSettings {
   dwellSelection?: boolean;
   scanSpeed?: number; // milliseconds
   dwellTime?: number; // milliseconds
+  routineAutoPlay?: boolean;
+  routineShowPinnedOnly?: boolean;
+  routineButtonSize?: 'normal' | 'large';
   advancedFeatures?: {
     behaviorDetection?: boolean;
     emotionSuggestions?: boolean;

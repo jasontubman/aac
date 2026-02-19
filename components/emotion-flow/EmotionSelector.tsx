@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, FlatList } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '../../theme';
 
 interface Emotion {
@@ -24,6 +25,7 @@ interface EmotionSelectorProps {
 }
 
 export const EmotionSelector: React.FC<EmotionSelectorProps> = ({ onSelect }) => {
+  const insets = useSafeAreaInsets();
   return (
     <View style={styles.container}>
       <Text style={styles.title}>How are you feeling?</Text>
@@ -31,7 +33,7 @@ export const EmotionSelector: React.FC<EmotionSelectorProps> = ({ onSelect }) =>
         data={EMOTIONS}
         numColumns={2}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.grid}
+        contentContainerStyle={[styles.grid, { paddingBottom: insets.bottom + 100 }]}
         renderItem={({ item }) => (
           <TouchableOpacity
             style={styles.emotionButton}

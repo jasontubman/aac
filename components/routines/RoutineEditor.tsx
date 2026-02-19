@@ -7,7 +7,9 @@ import {
   StyleSheet,
   ScrollView,
   Alert,
+  Image,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '../../theme';
 import { useProfileStore } from '../../store/profileStore';
 import { useSubscriptionStore } from '../../store/subscriptionStore';
@@ -21,6 +23,9 @@ import {
 } from '../../database/queries';
 import { generateId } from '../../utils/id';
 import type { Routine, Button, Board } from '../../database/types';
+import { isValidImageUri } from '../../utils/performance';
+import { ConfirmationDialog } from '../common/ConfirmationDialog';
+import { useToast } from '../../hooks/useToast';
 
 interface RoutineEditorProps {
   routineId?: string;
@@ -33,14 +38,17 @@ export const RoutineEditor: React.FC<RoutineEditorProps> = ({
   onSave,
   onCancel,
 }) => {
+  const insets = useSafeAreaInsets();
   const { activeProfile } = useProfileStore();
   const { isFeatureAvailable } = useSubscriptionStore();
+  const { success, error: showError, ToastContainer } = useToast();
   const [routine, setRoutine] = useState<Routine | null>(null);
   const [routineName, setRoutineName] = useState('');
   const [boards, setBoards] = useState<Board[]>([]);
   const [selectedBoardId, setSelectedBoardId] = useState<string | null>(null);
   const [availableButtons, setAvailableButtons] = useState<Button[]>([]);
   const [pinnedButtonIds, setPinnedButtonIds] = useState<string[]>([]);
+  const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
 
   useEffect(() => {
     if (activeProfile) {
@@ -67,6 +75,7 @@ export const RoutineEditor: React.FC<RoutineEditorProps> = ({
       }
     } catch (error) {
       console.error('Error loading boards:', error);
+      showError('Failed to load boards');
     }
   };
 
@@ -84,6 +93,7 @@ export const RoutineEditor: React.FC<RoutineEditorProps> = ({
       }
     } catch (error) {
       console.error('Error loading routine:', error);
+      showError('Failed to load routine');
     }
   };
 
@@ -94,6 +104,7 @@ export const RoutineEditor: React.FC<RoutineEditorProps> = ({
       setAvailableButtons(boardButtons);
     } catch (error) {
       console.error('Error loading buttons:', error);
+      showError('Failed to load buttons');
     }
   };
 
@@ -107,9 +118,27 @@ export const RoutineEditor: React.FC<RoutineEditorProps> = ({
     });
   };
 
+  const handleMoveUp = (index: number) => {
+    if (index === 0) return;
+    setPinnedButtonIds((prev) => {
+      const newOrder = [...prev];
+      [newOrder[index - 1], newOrder[index]] = [newOrder[index], newOrder[index - 1]];
+      return newOrder;
+    });
+  };
+
+  const handleMoveDown = (index: number) => {
+    if (index === pinnedButtonIds.length - 1) return;
+    setPinnedButtonIds((prev) => {
+      const newOrder = [...prev];
+      [newOrder[index], newOrder[index + 1]] = [newOrder[index + 1], newOrder[index]];
+      return newOrder;
+    });
+  };
+
   const handleSave = async () => {
     if (!activeProfile || !routineName.trim()) {
-      Alert.alert('Error', 'Please enter a routine name');
+      showError('Please enter a routine name');
       return;
     }
 
@@ -119,6 +148,7 @@ export const RoutineEditor: React.FC<RoutineEditorProps> = ({
           name: routineName,
           pinned_button_ids_json: JSON.stringify(pinnedButtonIds),
         });
+        success('Routine updated successfully!');
       } else {
         const newRoutineId = generateId();
         await createRoutine(
@@ -127,32 +157,31 @@ export const RoutineEditor: React.FC<RoutineEditorProps> = ({
           routineName,
           pinnedButtonIds
         );
+        success('Routine created successfully!');
       }
       onSave?.();
     } catch (error) {
-      Alert.alert('Error', 'Failed to save routine');
       console.error('Error saving routine:', error);
+      showError('Failed to save routine');
     }
   };
 
   const handleDelete = async () => {
     if (!routine) return;
+    try {
+      await deleteRoutine(routine.id);
+      success('Routine deleted successfully');
+      onCancel?.();
+    } catch (error) {
+      console.error('Error deleting routine:', error);
+      showError('Failed to delete routine');
+    }
+  };
 
-    Alert.alert('Delete Routine', 'Are you sure?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await deleteRoutine(routine.id);
-            onCancel?.();
-          } catch (error) {
-            Alert.alert('Error', 'Failed to delete routine');
-          }
-        },
-      },
-    ]);
+  const getPinnedButtons = () => {
+    return pinnedButtonIds
+      .map((id) => availableButtons.find((btn) => btn.id === id))
+      .filter((btn): btn is Button => btn !== undefined);
   };
 
   if (!isFeatureAvailable('routines')) {
@@ -165,97 +194,211 @@ export const RoutineEditor: React.FC<RoutineEditorProps> = ({
     );
   }
 
+  const pinnedButtons = getPinnedButtons();
+
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.section}>
-        <Text style={styles.label}>Routine Name</Text>
-        <TextInput
-          style={styles.input}
-          value={routineName}
-          onChangeText={setRoutineName}
-          placeholder="e.g., Morning Routine"
-        />
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.label}>Select Board</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          {boards.map((board) => (
-            <TouchableOpacity
-              key={board.id}
-              style={[
-                styles.boardChip,
-                selectedBoardId === board.id && styles.boardChipActive,
-              ]}
-              onPress={() => setSelectedBoardId(board.id)}
-            >
-              <Text
-                style={[
-                  styles.boardChipText,
-                  selectedBoardId === board.id && styles.boardChipTextActive,
-                ]}
-              >
-                {board.name}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
-
-      {selectedBoardId && (
-        <View style={styles.section}>
-          <Text style={styles.label}>
-            Pin Buttons ({pinnedButtonIds.length} selected)
-          </Text>
-          <Text style={styles.hint}>
-            Tap buttons to pin them to this routine
-          </Text>
-          <View style={styles.buttonGrid}>
-            {availableButtons.map((button) => {
-              const isPinned = pinnedButtonIds.includes(button.id);
-              return (
-                <TouchableOpacity
-                  key={button.id}
-                  style={[
-                    styles.buttonChip,
-                    isPinned && styles.buttonChipPinned,
-                  ]}
-                  onPress={() => handleTogglePin(button.id)}
-                >
-                  <Text
-                    style={[
-                      styles.buttonChipText,
-                      isPinned && styles.buttonChipTextPinned,
-                    ]}
-                  >
-                    {button.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      <ToastContainer />
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
+      >
+        {/* Header Section */}
+        <View style={styles.headerSection}>
+          <Text style={styles.sectionTitle}>Routine Name</Text>
+          <TextInput
+            style={styles.nameInput}
+            value={routineName}
+            onChangeText={setRoutineName}
+            placeholder="e.g., Morning Routine"
+            placeholderTextColor={colors.text.secondary}
+          />
         </View>
-      )}
 
-      <View style={styles.actions}>
-        <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
-          <Text style={styles.saveButtonText}>Save Routine</Text>
-        </TouchableOpacity>
+        {/* Board Selection */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Select Board</Text>
+          <Text style={styles.sectionDescription}>
+            Choose a board to select buttons from
+          </Text>
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false}
+            style={styles.boardScroll}
+            contentContainerStyle={styles.boardScrollContent}
+          >
+            {boards.map((board) => (
+              <TouchableOpacity
+                key={board.id}
+                style={[
+                  styles.boardCard,
+                  selectedBoardId === board.id && styles.boardCardActive,
+                ]}
+                onPress={() => setSelectedBoardId(board.id)}
+              >
+                <Text style={styles.boardIcon}>📋</Text>
+                <Text
+                  style={[
+                    styles.boardCardText,
+                    selectedBoardId === board.id && styles.boardCardTextActive,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {board.name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
 
+        {/* Pinned Buttons Preview */}
+        {pinnedButtons.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>
+              Routine Buttons ({pinnedButtons.length})
+            </Text>
+            <Text style={styles.sectionDescription}>
+              These buttons will appear in your routine
+            </Text>
+            <View style={styles.pinnedGrid}>
+              {pinnedButtons.map((button, index) => (
+                <View key={button.id} style={styles.pinnedButtonContainer}>
+                  <View style={styles.pinnedButtonCard}>
+                    {(button.symbol_path && isValidImageUri(button.symbol_path)) && (
+                      <Image
+                        source={{ uri: button.symbol_path }}
+                        style={styles.buttonImage}
+                        resizeMode="contain"
+                      />
+                    )}
+                    {(button.image_path && isValidImageUri(button.image_path) && !button.symbol_path) && (
+                      <Image
+                        source={{ uri: button.image_path }}
+                        style={styles.buttonImage}
+                        resizeMode="cover"
+                      />
+                    )}
+                    <Text style={styles.buttonLabel} numberOfLines={2}>
+                      {button.label}
+                    </Text>
+                  </View>
+                  <View style={styles.reorderButtons}>
+                    <TouchableOpacity
+                      style={[styles.reorderButton, index === 0 && styles.reorderButtonDisabled]}
+                      onPress={() => handleMoveUp(index)}
+                      disabled={index === 0}
+                    >
+                      <Text style={styles.reorderButtonText}>↑</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.reorderButton, index === pinnedButtons.length - 1 && styles.reorderButtonDisabled]}
+                      onPress={() => handleMoveDown(index)}
+                      disabled={index === pinnedButtons.length - 1}
+                    >
+                      <Text style={styles.reorderButtonText}>↓</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {/* Available Buttons */}
+        {selectedBoardId && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>
+              Available Buttons
+            </Text>
+            <Text style={styles.sectionDescription}>
+              Tap buttons to add them to your routine
+            </Text>
+            <View style={styles.availableGrid}>
+              {availableButtons.map((button) => {
+                const isPinned = pinnedButtonIds.includes(button.id);
+                return (
+                  <TouchableOpacity
+                    key={button.id}
+                    style={[
+                      styles.availableButtonCard,
+                      isPinned && styles.availableButtonCardPinned,
+                    ]}
+                    onPress={() => handleTogglePin(button.id)}
+                    activeOpacity={0.7}
+                  >
+                    {(button.symbol_path && isValidImageUri(button.symbol_path)) && (
+                      <Image
+                        source={{ uri: button.symbol_path }}
+                        style={styles.availableButtonImage}
+                        resizeMode="contain"
+                      />
+                    )}
+                    {(button.image_path && isValidImageUri(button.image_path) && !button.symbol_path) && (
+                      <Image
+                        source={{ uri: button.image_path }}
+                        style={styles.availableButtonImage}
+                        resizeMode="cover"
+                      />
+                    )}
+                    <Text 
+                      style={[
+                        styles.availableButtonLabel,
+                        isPinned && styles.availableButtonLabelPinned,
+                      ]}
+                      numberOfLines={2}
+                    >
+                      {button.label}
+                    </Text>
+                    {isPinned && (
+                      <View style={styles.pinnedBadge}>
+                        <Text style={styles.pinnedBadgeText}>✓</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        )}
+
+        {/* Delete Button */}
         {routine && (
           <TouchableOpacity
             style={styles.deleteButton}
-            onPress={handleDelete}
+            onPress={() => setDeleteConfirmVisible(true)}
           >
-            <Text style={styles.deleteButtonText}>Delete Routine</Text>
+            <Text style={styles.deleteButtonText}>🗑️ Delete Routine</Text>
           </TouchableOpacity>
         )}
+      </ScrollView>
 
-        <TouchableOpacity style={styles.cancelButton} onPress={onCancel}>
-          <Text style={styles.cancelButtonText}>Cancel</Text>
+      {/* Sticky Footer */}
+      <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.md }]}>
+        <TouchableOpacity style={styles.cancelFooterButton} onPress={onCancel}>
+          <Text style={styles.cancelFooterButtonText}>Cancel</Text>
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={styles.saveFooterButton} 
+          onPress={handleSave}
+          disabled={!routineName.trim()}
+        >
+          <Text style={styles.saveFooterButtonText}>
+            {routine ? '💾 Save Changes' : '✨ Create Routine'}
+          </Text>
         </TouchableOpacity>
       </View>
-    </ScrollView>
+
+      <ConfirmationDialog
+        visible={deleteConfirmVisible}
+        title="Delete Routine"
+        message={`Are you sure you want to delete "${routine?.name}"? This cannot be undone.`}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteConfirmVisible(false)}
+        destructive={true}
+      />
+    </View>
   );
 };
 
@@ -263,106 +406,230 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background.light,
+  },
+  scrollView: {
+    flex: 1,
     padding: spacing.md,
+  },
+  headerSection: {
+    marginBottom: spacing.xl,
+    paddingBottom: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.neutral[200],
   },
   section: {
     marginBottom: spacing.xl,
   },
-  label: {
-    ...typography.label.medium,
-    marginBottom: spacing.sm,
+  sectionTitle: {
+    ...typography.heading.h2,
     color: colors.text.primary,
+    marginBottom: spacing.xs,
   },
-  hint: {
+  sectionDescription: {
     ...typography.body.small,
     color: colors.text.secondary,
     marginBottom: spacing.md,
   },
-  input: {
-    borderWidth: 1,
+  nameInput: {
+    borderWidth: 2,
     borderColor: colors.neutral[300],
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.lg,
     padding: spacing.md,
-    ...typography.body.medium,
+    ...typography.heading.h3,
     backgroundColor: colors.background.light,
+    marginTop: spacing.sm,
   },
-  boardChip: {
+  boardScroll: {
+    marginHorizontal: -spacing.md,
+  },
+  boardScrollContent: {
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.neutral[200],
+  },
+  boardCard: {
+    backgroundColor: colors.neutral[50],
+    padding: spacing.md,
+    borderRadius: borderRadius.lg,
     marginRight: spacing.sm,
+    minWidth: 120,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'transparent',
   },
-  boardChipActive: {
+  boardCardActive: {
     backgroundColor: colors.primary[500],
+    borderColor: colors.primary[600],
   },
-  boardChipText: {
-    ...typography.button.small,
+  boardIcon: {
+    fontSize: 32,
+    marginBottom: spacing.xs,
+  },
+  boardCardText: {
+    ...typography.label.medium,
     color: colors.text.primary,
+    textAlign: 'center',
   },
-  boardChipTextActive: {
+  boardCardTextActive: {
     color: colors.text.light,
+    fontWeight: '600',
   },
-  buttonGrid: {
+  pinnedGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.md,
+  },
+  pinnedButtonContainer: {
+    width: '48%',
+    marginBottom: spacing.md,
+  },
+  pinnedButtonCard: {
+    backgroundColor: colors.secondary[50],
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: colors.secondary[300],
+    minHeight: 140,
+    justifyContent: 'center',
+  },
+  buttonImage: {
+    width: 60,
+    height: 60,
+    borderRadius: borderRadius.md,
+    marginBottom: spacing.sm,
+  },
+  buttonLabel: {
+    ...typography.label.medium,
+    color: colors.text.primary,
+    textAlign: 'center',
+    fontWeight: '600',
+  },
+  reorderButtons: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+  },
+  reorderButton: {
+    backgroundColor: colors.neutral[200],
+    width: 32,
+    height: 32,
+    borderRadius: borderRadius.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  reorderButtonDisabled: {
+    opacity: 0.3,
+  },
+  reorderButtonText: {
+    fontSize: 16,
+    color: colors.text.primary,
+    fontWeight: '600',
+  },
+  availableGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.sm,
   },
-  buttonChip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+  availableButtonCard: {
+    width: '31%',
+    backgroundColor: colors.neutral[50],
     borderRadius: borderRadius.md,
-    backgroundColor: colors.neutral[100],
+    padding: spacing.sm,
+    alignItems: 'center',
     borderWidth: 2,
     borderColor: 'transparent',
+    minHeight: 100,
+    justifyContent: 'center',
+    position: 'relative',
   },
-  buttonChipPinned: {
-    backgroundColor: colors.secondary[200],
-    borderColor: colors.secondary[500],
+  availableButtonCardPinned: {
+    backgroundColor: colors.secondary[100],
+    borderColor: colors.secondary[400],
   },
-  buttonChipText: {
-    ...typography.button.small,
+  availableButtonImage: {
+    width: 40,
+    height: 40,
+    borderRadius: borderRadius.sm,
+    marginBottom: spacing.xs,
+  },
+  availableButtonLabel: {
+    ...typography.body.small,
     color: colors.text.primary,
+    textAlign: 'center',
+    fontSize: 11,
   },
-  buttonChipTextPinned: {
+  availableButtonLabelPinned: {
     color: colors.secondary[700],
     fontWeight: '600',
   },
-  actions: {
-    marginTop: spacing.xl,
-    marginBottom: spacing.xl,
-  },
-  saveButton: {
-    backgroundColor: colors.primary[500],
-    padding: spacing.md,
-    borderRadius: borderRadius.lg,
+  pinnedBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    backgroundColor: colors.success,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: spacing.sm,
   },
-  saveButtonText: {
-    ...typography.button.medium,
+  pinnedBadgeText: {
     color: colors.text.light,
+    fontSize: 12,
+    fontWeight: '700',
   },
   deleteButton: {
     backgroundColor: colors.error,
     padding: spacing.md,
     borderRadius: borderRadius.lg,
     alignItems: 'center',
-    marginBottom: spacing.sm,
+    marginTop: spacing.md,
+    marginBottom: spacing.xl,
   },
   deleteButtonText: {
     ...typography.button.medium,
     color: colors.text.light,
   },
-  cancelButton: {
+  footer: {
+    backgroundColor: colors.background.light,
+    borderTopWidth: 1,
+    borderTopColor: colors.neutral[200],
+    paddingTop: spacing.md,
+    paddingHorizontal: spacing.md,
+    flexDirection: 'row',
+    gap: spacing.md,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  cancelFooterButton: {
+    flex: 1,
     backgroundColor: colors.neutral[200],
     padding: spacing.md,
     borderRadius: borderRadius.lg,
     alignItems: 'center',
+    minHeight: 56,
+    justifyContent: 'center',
   },
-  cancelButtonText: {
-    ...typography.button.medium,
+  cancelFooterButtonText: {
+    ...typography.button.large,
     color: colors.text.primary,
+  },
+  saveFooterButton: {
+    flex: 2,
+    backgroundColor: colors.primary[500],
+    padding: spacing.md,
+    borderRadius: borderRadius.lg,
+    alignItems: 'center',
+    minHeight: 56,
+    justifyContent: 'center',
+  },
+  saveFooterButtonText: {
+    ...typography.button.large,
+    color: colors.text.light,
+    fontSize: 18,
   },
   errorText: {
     ...typography.body.medium,

@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, FlatList } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '../../theme';
 
 interface Need {
@@ -62,6 +63,7 @@ export const NeedSelector: React.FC<NeedSelectorProps> = ({
   onSelect,
   onBack,
 }) => {
+  const insets = useSafeAreaInsets();
   const needs = NEEDS_BY_EMOTION[emotionId] || NEEDS_BY_EMOTION.happy;
 
   return (
@@ -73,7 +75,7 @@ export const NeedSelector: React.FC<NeedSelectorProps> = ({
       <FlatList
         data={needs}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.list}
+        contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 100 }]}
         renderItem={({ item }) => (
           <TouchableOpacity
             style={styles.needButton}

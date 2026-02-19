@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RoutineSelector } from '../../components/routines/RoutineSelector';
 import { RoutineEditor } from '../../components/routines/RoutineEditor';
+import { DashboardViewSwitcher } from '../../components/navigation/DashboardViewSwitcher';
 import { colors, spacing, typography } from '../../theme';
 import { useProfileStore } from '../../store/profileStore';
 import { getRoutinesByProfile } from '../../database/queries';
@@ -9,6 +11,7 @@ import { generateId } from '../../utils/id';
 import { createRoutine } from '../../database/queries';
 
 export default function RoutinesScreen() {
+  const insets = useSafeAreaInsets();
   const { activeProfile } = useProfileStore();
   const [editingRoutineId, setEditingRoutineId] = useState<string | undefined>();
   const [showSelector, setShowSelector] = useState(true);
@@ -44,7 +47,7 @@ export default function RoutinesScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       {showSelector && (
         <>
           <View style={styles.header}>
@@ -63,6 +66,7 @@ export default function RoutinesScreen() {
               }
             }}
           />
+          <DashboardViewSwitcher currentView="routines" />
         </>
       )}
     </View>
