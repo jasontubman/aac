@@ -14,7 +14,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '../../theme';
 import {
   getOfferings,
-  purchaseSubscription,
   restorePurchases,
   initializeRevenueCat,
   getCustomerInfo,
@@ -25,8 +24,7 @@ import { presentCustomerCenter } from '../../services/revenueCatCustomerCenter';
 import { useSubscriptionStore } from '../../store/subscriptionStore';
 import { appStorage } from '../../services/storage';
 import { RestorePurchases } from './RestorePurchases';
-import type { PurchasesPackage, PurchasesOffering } from 'react-native-purchases';
-import { SUBSCRIPTION_PRICES } from '../../utils/constants';
+import type { PurchasesOffering } from 'react-native-purchases';
 import { POLICY_URLS, shouldUseInAppScreens } from '../../utils/policyUrls';
 
 export const SubscriptionScreen: React.FC = () => {
@@ -35,17 +33,39 @@ export const SubscriptionScreen: React.FC = () => {
   const [offerings, setOfferings] = useState<PurchasesOffering | null>(null);
   const [loading, setLoading] = useState(true);
   const [purchasing, setPurchasing] = useState(false);
-  const [usePaywall, setUsePaywall] = useState(false);
-  const { setEntitlement, initialize } = useSubscriptionStore();
+  const { setEntitlement, initialize, getCurrentStatus, entitlement } = useSubscriptionStore();
+  const [trialDaysRemaining, setTrialDaysRemaining] = useState<number | null>(null);
 
   useEffect(() => {
     const init = async () => {
+      // Always sync with RevenueCat first
+      const { syncWithRevenueCat } = await import('../../services/subscription');
+      await syncWithRevenueCat();
+      
       await loadOfferings();
       await initialize();
       await checkSubscriptionStatus();
+      calculateTrialDaysRemaining();
     };
     init();
   }, []);
+
+  useEffect(() => {
+    // Recalculate when entitlement changes
+    calculateTrialDaysRemaining();
+  }, [entitlement]);
+
+  const calculateTrialDaysRemaining = () => {
+    const status = getCurrentStatus();
+    if (status === 'trial_active' && entitlement?.trialStartedAt) {
+      const now = Date.now();
+      const trialEndsAt = entitlement.trialStartedAt + (14 * 24 * 60 * 60 * 1000); // 14 days
+      const daysRemaining = Math.ceil((trialEndsAt - now) / (24 * 60 * 60 * 1000));
+      setTrialDaysRemaining(Math.max(0, daysRemaining));
+    } else {
+      setTrialDaysRemaining(null);
+    }
+  };
 
   const loadOfferings = async () => {
     try {
@@ -74,41 +94,34 @@ export const SubscriptionScreen: React.FC = () => {
     }
   };
 
-  const handlePurchase = async (packageToPurchase: PurchasesPackage) => {
-    try {
-      setPurchasing(true);
-      await purchaseSubscription(packageToPurchase);
-      // Entitlement will be updated automatically
-      await initialize();
-      // Mark onboarding as complete if coming from onboarding flow
-      const onboardingCompleted = await appStorage.isOnboardingCompleted();
-      if (!onboardingCompleted) {
-        await appStorage.setOnboardingCompleted(true);
-        router.replace('/(tabs)');
-      } else {
-        Alert.alert('Success', 'Thank you for subscribing to Easy AAC Pro!');
-      }
-    } catch (error: any) {
-      if (error.message !== 'Purchase cancelled') {
-        Alert.alert('Purchase Error', error.message || 'An error occurred during purchase.');
-      }
-    } finally {
-      setPurchasing(false);
-    }
-  };
 
   const handlePresentPaywall = async () => {
     try {
       setPurchasing(true);
       await presentPaywall(offerings || undefined);
-      // Refresh customer info after paywall dismissal
-      await initialize();
+      
+      // Always refresh from RevenueCat after paywall dismissal
       const customerInfo = await getCustomerInfo();
-      if (customerInfo.entitlements.active['easy_aac_pro']) {
-        Alert.alert('Success', 'Thank you for subscribing to Easy AAC Pro!');
+      const { updateEntitlementCache } = await import('../../services/subscription');
+      await updateEntitlementCache(customerInfo);
+      
+      // Refresh subscription store
+      await initialize();
+      
+      // Check if user purchased or started trial
+      const status = getCurrentStatus();
+      if (status === 'trial_active' || status === 'active_subscribed') {
+        // Mark onboarding as complete if coming from onboarding flow
+        const onboardingCompleted = await appStorage.isOnboardingCompleted();
+        if (!onboardingCompleted) {
+          await appStorage.setOnboardingCompleted(true);
+          router.replace('/(tabs)');
+        } else {
+          Alert.alert('Success', 'Thank you for subscribing to Easy AAC Pro!');
+        }
       }
     } catch (error: any) {
-      if (error.message && !error.message.includes('cancelled')) {
+      if (error.message && !error.message.includes('cancelled') && !error.message.includes('USER_CANCELLED')) {
         Alert.alert('Error', 'Unable to load subscription options.');
       }
     } finally {
@@ -136,119 +149,107 @@ export const SubscriptionScreen: React.FC = () => {
     );
   }
 
+  const subscriptionStatus = getCurrentStatus();
+  const isOnTrial = subscriptionStatus === 'trial_active';
+  const isActive = subscriptionStatus === 'active_subscribed';
+  const isExpired = subscriptionStatus === 'expired_limited_mode';
+  const isGracePeriod = subscriptionStatus === 'grace_period';
+
   return (
     <ScrollView 
       style={styles.container} 
       contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + spacing.xl }]}
     >
       <Text style={styles.title}>Easy AAC Pro</Text>
-      <Text style={styles.description}>
-        Get full access to all AAC features including routines, custom boards, photo personalization, and more.
-      </Text>
-
-      {/* Option to use RevenueCat Paywall */}
-      <TouchableOpacity
-        style={[styles.paywallButton, usePaywall && styles.paywallButtonActive]}
-        onPress={() => setUsePaywall(!usePaywall)}
-      >
-        <Text style={styles.paywallButtonText}>
-          {usePaywall ? '✓ Using RevenueCat Paywall' : 'Use RevenueCat Paywall'}
-        </Text>
-      </TouchableOpacity>
-
-      {usePaywall ? (
-        // RevenueCat Paywall Option
-        <View style={styles.paywallContainer}>
-          <Text style={styles.paywallDescription}>
-            Use RevenueCat's built-in paywall for the best subscription experience.
+      
+      {/* Trial Status Banner */}
+      {isOnTrial && trialDaysRemaining !== null && (
+        <View style={styles.trialBanner}>
+          <Text style={styles.trialBannerTitle}>Free Trial Active</Text>
+          <Text style={styles.trialBannerDays}>
+            {trialDaysRemaining === 0 
+              ? 'Trial ends today' 
+              : trialDaysRemaining === 1
+              ? '1 day remaining'
+              : `${trialDaysRemaining} days remaining`}
           </Text>
-          <TouchableOpacity
-            style={styles.primaryButton}
-            onPress={handlePresentPaywall}
-            disabled={purchasing || !offerings}
-          >
-            <Text style={styles.primaryButtonText}>
-              {purchasing ? 'Loading...' : 'View Subscription Options'}
-            </Text>
-          </TouchableOpacity>
+          <Text style={styles.trialBannerSubtext}>
+            Upgrade now to keep all features after your trial ends
+          </Text>
         </View>
-      ) : (
-        // Custom Pricing Cards
-        <View style={styles.pricingContainer}>
-        {/* Monthly */}
-        <TouchableOpacity
-          style={styles.pricingCard}
-          onPress={() => {
-            // Handle monthly purchase
-            if (offerings?.availablePackages) {
-              const monthlyPackage = offerings.availablePackages.find(
-                (pkg: PurchasesPackage) => pkg.identifier === 'monthly'
-              );
-              if (monthlyPackage) {
-                handlePurchase(monthlyPackage);
-              }
-            }
-          }}
-          disabled={purchasing}
-        >
-          <Text style={styles.pricingTitle}>Monthly</Text>
-          <Text style={styles.pricingPrice}>${SUBSCRIPTION_PRICES.MONTHLY}/month</Text>
-          <Text style={styles.pricingDescription}>Billed monthly</Text>
-        </TouchableOpacity>
-
-        {/* Annual */}
-        <TouchableOpacity
-          style={[styles.pricingCard, styles.pricingCardFeatured]}
-          onPress={() => {
-            // Handle annual purchase
-            if (offerings?.availablePackages) {
-              const annualPackage = offerings.availablePackages.find(
-                (pkg: PurchasesPackage) => pkg.identifier === 'annual'
-              );
-              if (annualPackage) {
-                handlePurchase(annualPackage);
-              }
-            }
-          }}
-          disabled={purchasing}
-        >
-          <Text style={styles.pricingTitle}>Annual</Text>
-          <Text style={styles.pricingPrice}>${SUBSCRIPTION_PRICES.ANNUAL}/year</Text>
-          <Text style={styles.pricingDescription}>Save 42%</Text>
-        </TouchableOpacity>
-
-        {/* Lifetime */}
-        <TouchableOpacity
-          style={styles.pricingCard}
-          onPress={() => {
-            // Handle lifetime purchase
-            if (offerings?.availablePackages) {
-              const lifetimePackage = offerings.availablePackages.find(
-                (pkg: PurchasesPackage) => pkg.identifier === 'lifetime'
-              );
-              if (lifetimePackage) {
-                handlePurchase(lifetimePackage);
-              }
-            }
-          }}
-          disabled={purchasing}
-        >
-          <Text style={styles.pricingTitle}>Lifetime</Text>
-          <Text style={styles.pricingPrice}>${SUBSCRIPTION_PRICES.LIFETIME}</Text>
-          <Text style={styles.pricingDescription}>One-time payment</Text>
-        </TouchableOpacity>
-      </View>
       )}
 
-      <Text style={styles.trialText}>14-day free trial included</Text>
+      {/* Active Subscription Banner */}
+      {isActive && entitlement?.expiresAt && (
+        <View style={styles.activeBanner}>
+          <Text style={styles.activeBannerTitle}>✓ Subscription Active</Text>
+          <Text style={styles.activeBannerText}>
+            Renews on {new Date(entitlement.expiresAt).toLocaleDateString()}
+          </Text>
+        </View>
+      )}
+
+      {/* Grace Period Banner */}
+      {isGracePeriod && (
+        <View style={styles.graceBanner}>
+          <Text style={styles.graceBannerTitle}>Grace Period</Text>
+          <Text style={styles.graceBannerText}>
+            Your subscription expired. Renew now to continue full access.
+          </Text>
+        </View>
+      )}
+
+      {/* Expired Banner */}
+      {isExpired && (
+        <View style={styles.expiredBanner}>
+          <Text style={styles.expiredBannerTitle}>Subscription Expired</Text>
+          <Text style={styles.expiredBannerText}>
+            You're using limited mode. Subscribe to restore full access.
+          </Text>
+        </View>
+      )}
+
+      <Text style={styles.description}>
+        {isOnTrial 
+          ? 'Upgrade now to keep all features after your trial ends. No interruption to your current access.'
+          : isActive
+          ? 'You have full access to all AAC features including routines, custom boards, photo personalization, and more.'
+          : 'Get full access to all AAC features including routines, custom boards, photo personalization, and more.'}
+      </Text>
+
+      {/* Subscription Action Button */}
+      {isOnTrial ? (
+        <TouchableOpacity
+          style={styles.upgradeButton}
+          onPress={handlePresentPaywall}
+          disabled={purchasing || !offerings}
+        >
+          <Text style={styles.upgradeButtonText}>
+            {purchasing ? 'Loading...' : 'Upgrade Now'}
+          </Text>
+        </TouchableOpacity>
+      ) : !isActive ? (
+        <TouchableOpacity
+          style={styles.primaryButton}
+          onPress={handlePresentPaywall}
+          disabled={purchasing || !offerings}
+        >
+          <Text style={styles.primaryButtonText}>
+            {purchasing ? 'Loading...' : 'Subscribe Now'}
+          </Text>
+        </TouchableOpacity>
+      ) : null}
+
 
       {/* Customer Center Button */}
-      <TouchableOpacity
-        style={styles.customerCenterButton}
-        onPress={handlePresentCustomerCenter}
-      >
-        <Text style={styles.customerCenterButtonText}>Manage Subscription</Text>
-      </TouchableOpacity>
+      {(isActive || isGracePeriod) && (
+        <TouchableOpacity
+          style={styles.customerCenterButton}
+          onPress={handlePresentCustomerCenter}
+        >
+          <Text style={styles.customerCenterButtonText}>Manage Subscription</Text>
+        </TouchableOpacity>
+      )}
 
       <RestorePurchases />
 
@@ -313,42 +314,6 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xl,
     color: colors.text.secondary,
   },
-  pricingContainer: {
-    marginBottom: spacing.lg,
-  },
-  pricingCard: {
-    backgroundColor: colors.neutral[50],
-    borderWidth: 2,
-    borderColor: colors.neutral[200],
-    borderRadius: borderRadius.xl,
-    padding: spacing.xl,
-    marginBottom: spacing.md,
-    alignItems: 'center',
-  },
-  pricingCardFeatured: {
-    borderColor: colors.primary[500],
-    backgroundColor: colors.primary[50],
-  },
-  pricingTitle: {
-    ...typography.heading.h2,
-    marginBottom: spacing.sm,
-    color: colors.text.primary,
-  },
-  pricingPrice: {
-    ...typography.display.medium,
-    color: colors.primary[600],
-    marginBottom: spacing.xs,
-  },
-  pricingDescription: {
-    ...typography.body.small,
-    color: colors.text.secondary,
-  },
-  trialText: {
-    ...typography.body.medium,
-    textAlign: 'center',
-    color: colors.success,
-    marginBottom: spacing.lg,
-  },
   footer: {
     marginTop: spacing.xl,
   },
@@ -374,32 +339,6 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
     marginHorizontal: spacing.xs,
   },
-  paywallButton: {
-    backgroundColor: colors.neutral[100],
-    borderWidth: 2,
-    borderColor: colors.neutral[300],
-    borderRadius: borderRadius.lg,
-    padding: spacing.md,
-    marginBottom: spacing.lg,
-    alignItems: 'center',
-  },
-  paywallButtonActive: {
-    borderColor: colors.primary[500],
-    backgroundColor: colors.primary[50],
-  },
-  paywallButtonText: {
-    ...typography.body.medium,
-    color: colors.text.primary,
-  },
-  paywallContainer: {
-    marginBottom: spacing.lg,
-  },
-  paywallDescription: {
-    ...typography.body.small,
-    color: colors.text.secondary,
-    marginBottom: spacing.md,
-    textAlign: 'center',
-  },
   primaryButton: {
     backgroundColor: colors.primary[500],
     padding: spacing.lg,
@@ -420,5 +359,104 @@ const styles = StyleSheet.create({
   customerCenterButtonText: {
     ...typography.button.medium,
     color: colors.primary[600],
+  },
+  trialBanner: {
+    backgroundColor: colors.primary[50],
+    borderWidth: 2,
+    borderColor: colors.primary[300],
+    borderRadius: borderRadius.xl,
+    padding: spacing.lg,
+    marginBottom: spacing.lg,
+    alignItems: 'center',
+  },
+  trialBannerTitle: {
+    ...typography.heading.h3,
+    color: colors.primary[700],
+    marginBottom: spacing.xs,
+  },
+  trialBannerDays: {
+    ...typography.display.small,
+    color: colors.primary[600],
+    fontWeight: 'bold',
+    marginBottom: spacing.xs,
+  },
+  trialBannerSubtext: {
+    ...typography.body.small,
+    color: colors.text.secondary,
+    textAlign: 'center',
+    marginTop: spacing.xs,
+  },
+  activeBanner: {
+    backgroundColor: '#d1fae5', // colors.success with opacity
+    borderWidth: 2,
+    borderColor: colors.success,
+    borderRadius: borderRadius.xl,
+    padding: spacing.lg,
+    marginBottom: spacing.lg,
+    alignItems: 'center',
+  },
+  activeBannerTitle: {
+    ...typography.heading.h3,
+    color: colors.success,
+    marginBottom: spacing.xs,
+  },
+  activeBannerText: {
+    ...typography.body.medium,
+    color: colors.text.secondary,
+  },
+  graceBanner: {
+    backgroundColor: '#fef3c7', // colors.warning with opacity
+    borderWidth: 2,
+    borderColor: colors.warning,
+    borderRadius: borderRadius.xl,
+    padding: spacing.lg,
+    marginBottom: spacing.lg,
+    alignItems: 'center',
+  },
+  graceBannerTitle: {
+    ...typography.heading.h3,
+    color: colors.warning,
+    marginBottom: spacing.xs,
+  },
+  graceBannerText: {
+    ...typography.body.medium,
+    color: colors.text.secondary,
+    textAlign: 'center',
+  },
+  expiredBanner: {
+    backgroundColor: '#fee2e2', // colors.error with opacity
+    borderWidth: 2,
+    borderColor: colors.error,
+    borderRadius: borderRadius.xl,
+    padding: spacing.lg,
+    marginBottom: spacing.lg,
+    alignItems: 'center',
+  },
+  expiredBannerTitle: {
+    ...typography.heading.h3,
+    color: colors.error,
+    marginBottom: spacing.xs,
+  },
+  expiredBannerText: {
+    ...typography.body.medium,
+    color: colors.text.secondary,
+    textAlign: 'center',
+  },
+  upgradeButton: {
+    backgroundColor: colors.primary[500],
+    padding: spacing.lg,
+    borderRadius: borderRadius.xl,
+    alignItems: 'center',
+    marginBottom: spacing.md,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  upgradeButtonText: {
+    ...typography.button.large,
+    color: colors.text.light,
+    fontWeight: 'bold',
   },
 });

@@ -29,7 +29,7 @@ export const SpeakButton: React.FC<SpeakButtonProps> = ({
   return (
     <View style={styles.container}>
       <TouchableOpacity style={styles.backButton} onPress={onBack}>
-        <Text style={styles.backButtonText}>← Back</Text>
+        <Text style={styles.backButtonText} numberOfLines={1} ellipsizeMode="tail">← Back</Text>
       </TouchableOpacity>
       
       <View style={styles.content}>
@@ -53,6 +53,8 @@ const styles = StyleSheet.create({
   backButton: {
     marginBottom: spacing.md,
     padding: spacing.sm,
+    alignSelf: 'flex-start',
+    maxWidth: 120,
   },
   backButtonText: {
     ...typography.button.medium,

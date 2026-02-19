@@ -33,14 +33,13 @@ export default function RootLayout() {
         // Initialize profile (depends on DB)
         const profileInit = dbInit.then(() => initProfile());
 
-        // Start trial on first launch (non-blocking)
-        if (await appStorage.isFirstLaunch()) {
-          await startTrial();
-          await appStorage.setFirstLaunch(false);
-        }
-
         // Wait for critical initialization
         await Promise.all([dbInit, profileInit]);
+        
+        // Mark first launch (but don't auto-start trial - user must go through onboarding)
+        if (await appStorage.isFirstLaunch()) {
+          await appStorage.setFirstLaunch(false);
+        }
         
         setIsInitialized(true);
       } catch (error) {
@@ -75,6 +74,7 @@ export default function RootLayout() {
         const status = getCurrentStatus();
         
         // If no trial/subscription and not on onboarding, redirect to onboarding
+        // This ensures users can't access the app without a valid subscription
         if (status === 'uninitialized' && currentRoute !== 'onboarding') {
           // Reset onboarding to force subscription flow
           await appStorage.setOnboardingCompleted(false);
@@ -82,8 +82,14 @@ export default function RootLayout() {
           return;
         }
         
-        // If on onboarding screen but already completed, redirect to main app
-        if (currentRoute === 'onboarding') {
+        // If expired and not in grace period, redirect to subscription screen
+        if (status === 'expired_limited_mode' && currentRoute !== 'caregiver' && currentRoute !== 'onboarding') {
+          // Allow access to core board but show subscription prompt in caregiver mode
+          // Don't redirect here - let them use fallback mode
+        }
+        
+        // If on onboarding screen but already completed with valid subscription, redirect to main app
+        if (currentRoute === 'onboarding' && (status === 'trial_active' || status === 'active_subscribed' || status === 'grace_period')) {
           router.replace('/(tabs)');
         }
       }

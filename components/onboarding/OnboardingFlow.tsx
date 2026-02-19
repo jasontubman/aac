@@ -86,17 +86,45 @@ export const OnboardingFlow: React.FC = () => {
   const handleStartTrial = async () => {
     try {
       setIsLoadingPaywall(true);
-      // Start the trial
-      await startTrial();
-      await initSubscription(); // Refresh subscription store
-      setHasStartedTrial(true);
       
-      // Mark onboarding as complete and navigate
-      await appStorage.setOnboardingCompleted(true);
-      router.replace('/(tabs)');
+      // Initialize RevenueCat first
+      await initializeRevenueCat();
+      
+      // Start the trial (validates with RevenueCat)
+      await startTrial();
+      
+      // Refresh subscription store to get latest status
+      await initSubscription();
+      const status = getCurrentStatus();
+      
+      // Verify trial was started successfully
+      if (status === 'trial_active' || status === 'active_subscribed') {
+        setHasStartedTrial(true);
+        
+        // Mark onboarding as complete and navigate
+        await appStorage.setOnboardingCompleted(true);
+        router.replace('/(tabs)');
+      } else {
+        // Trial didn't start - show error
+        Alert.alert(
+          'Unable to Start Trial',
+          'Please check your internet connection and try again. You can also view subscription plans to get started.',
+          [
+            { text: 'Try Again', onPress: handleStartTrial },
+            { text: 'View Plans', onPress: handleShowPaywall },
+          ]
+        );
+      }
     } catch (error) {
       console.error('Error starting trial:', error);
-      Alert.alert('Error', 'Failed to start trial. Please try again.');
+      Alert.alert(
+        'Error Starting Trial',
+        'We couldn\'t start your trial. Please try viewing subscription plans instead.',
+        [
+          { text: 'OK' },
+          { text: 'View Plans', onPress: handleShowPaywall },
+        ]
+      );
     } finally {
       setIsLoadingPaywall(false);
     }
@@ -105,23 +133,44 @@ export const OnboardingFlow: React.FC = () => {
   const handleShowPaywall = async () => {
     try {
       setIsLoadingPaywall(true);
+      
+      // Ensure RevenueCat is initialized
+      await initializeRevenueCat();
+      
       // Present RevenueCat paywall
       await presentPaywall();
       
-      // Check if user purchased or started trial
+      // Refresh subscription status after paywall is dismissed
+      await initSubscription();
+      
+      // Validate with RevenueCat to get latest entitlements
+      const { getCustomerInfo, updateEntitlementCache } = await import('../../services/subscription');
+      try {
+        const customerInfo = await getCustomerInfo();
+        await updateEntitlementCache(customerInfo);
+      } catch (error) {
+        console.log('Could not validate with RevenueCat (offline mode):', error);
+      }
+      
+      // Check subscription status
       await initSubscription();
       const status = getCurrentStatus();
       
-      if (status === 'trial_active' || status === 'active_subscribed') {
+      if (status === 'trial_active' || status === 'active_subscribed' || status === 'grace_period') {
         // User started trial or purchased - complete onboarding
         await appStorage.setOnboardingCompleted(true);
         router.replace('/(tabs)');
       }
-      // If user cancelled, they stay on this screen
+      // If user cancelled or no subscription, they stay on this screen
     } catch (error: any) {
       // User cancellation is handled gracefully by presentPaywall
-      if (error.message && !error.message.includes('cancelled')) {
+      if (error.message && !error.message.includes('cancelled') && !error.message.includes('USER_CANCELLED')) {
         console.error('Error showing paywall:', error);
+        Alert.alert(
+          'Error',
+          'Unable to load subscription options. Please check your internet connection and try again.',
+          [{ text: 'OK' }]
+        );
       }
     } finally {
       setIsLoadingPaywall(false);
@@ -150,6 +199,9 @@ export const OnboardingFlow: React.FC = () => {
             <Text style={styles.title}>Welcome to Easy AAC</Text>
             <Text style={styles.subtitle}>
               An offline-first communication app designed for kids
+            </Text>
+            <Text style={styles.description}>
+              Get started with a 14-day free trial. No credit card required.
             </Text>
             
             <View style={styles.features}>
@@ -248,6 +300,9 @@ export const OnboardingFlow: React.FC = () => {
             <Text style={styles.subtitle}>
               Start your 14-day free trial or subscribe now to access all features
             </Text>
+            <View style={styles.requiredBadge}>
+              <Text style={styles.requiredText}>Required to continue</Text>
+            </View>
             
             <View style={styles.features}>
               <View style={styles.feature}>
@@ -331,7 +386,25 @@ const styles = StyleSheet.create({
     ...typography.body.medium,
     color: colors.text.secondary,
     textAlign: 'center',
+    marginBottom: spacing.md,
+  },
+  description: {
+    ...typography.body.small,
+    color: colors.text.tertiary,
+    textAlign: 'center',
     marginBottom: spacing.xxl,
+  },
+  requiredBadge: {
+    backgroundColor: colors.primary[100],
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.md,
+    marginBottom: spacing.xxl,
+  },
+  requiredText: {
+    ...typography.body.small,
+    color: colors.primary[700],
+    fontWeight: '600',
   },
   features: {
     width: '100%',

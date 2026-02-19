@@ -140,16 +140,17 @@ export async function getCustomerInfo(): Promise<CustomerInfo> {
 }
 
 // Update entitlement cache from RevenueCat customer info
-async function updateEntitlementCache(customerInfo: CustomerInfo): Promise<void> {
+export async function updateEntitlementCache(customerInfo: CustomerInfo): Promise<void> {
   const entitlement = customerInfo.entitlements.active[ENTITLEMENT_IDENTIFIER];
   const now = Date.now();
 
   let status: SubscriptionStatus = 'uninitialized';
   let expiresAt: number | null = null;
   let productId: string | null = null;
+  let trialStartedAt: number | null = null;
 
   if (entitlement) {
-    // Active subscription or lifetime purchase
+    // Active subscription or lifetime purchase from RevenueCat
     if (entitlement.willRenew === false) {
       // Lifetime purchase - never expires
       status = 'active_subscribed';
@@ -158,15 +159,65 @@ async function updateEntitlementCache(customerInfo: CustomerInfo): Promise<void>
       // Subscription with renewal
       status = 'active_subscribed';
       expiresAt = entitlement.expirationDate ? new Date(entitlement.expirationDate).getTime() : null;
+      
+      // Check if this is a trial period (introductory offer)
+      // RevenueCat uses lowercase periodType: 'trial', 'intro', 'normal', etc.
+      const periodType = entitlement.periodType?.toLowerCase();
+      if (periodType === 'intro' || periodType === 'trial') {
+        // This is a trial period from RevenueCat
+        status = 'trial_active';
+        // Trial start date from entitlement
+        trialStartedAt = entitlement.originalPurchaseDate 
+          ? new Date(entitlement.originalPurchaseDate).getTime()
+          : entitlement.latestPurchaseDate
+          ? new Date(entitlement.latestPurchaseDate).getTime()
+          : now;
+      }
     }
     productId = entitlement.productIdentifier || null;
   } else {
-    // Check if we have a cached entitlement
-    const cached = await appStorage.getSubscriptionEntitlement();
-    if (cached) {
-      status = cached.status;
-      expiresAt = cached.expiresAt;
-      productId = cached.productId;
+    // No active entitlement - check if there's an expired one
+    const allEntitlements = customerInfo.entitlements.all[ENTITLEMENT_IDENTIFIER];
+    if (allEntitlements) {
+      // User had an entitlement but it's expired
+      const expiredDate = allEntitlements.expirationDate 
+        ? new Date(allEntitlements.expirationDate).getTime()
+        : null;
+      
+      if (expiredDate) {
+        const gracePeriodEndsAt = expiredDate + GRACE_PERIOD_DAYS * 24 * 60 * 60 * 1000;
+        if (now < gracePeriodEndsAt) {
+          status = 'grace_period';
+          expiresAt = gracePeriodEndsAt;
+        } else {
+          status = 'expired_limited_mode';
+          expiresAt = expiredDate;
+        }
+      } else {
+        status = 'expired_limited_mode';
+      }
+      productId = allEntitlements.productIdentifier || null;
+    } else {
+      // No entitlement at all - check cached for trial status
+      const cached = await appStorage.getSubscriptionEntitlement();
+      if (cached && cached.status === 'trial_active' && cached.trialStartedAt) {
+        // Check if trial is still valid
+        const trialEndsAt = cached.trialStartedAt + TRIAL_DAYS * 24 * 60 * 60 * 1000;
+        if (now < trialEndsAt) {
+          status = 'trial_active';
+          expiresAt = trialEndsAt;
+          trialStartedAt = cached.trialStartedAt;
+        } else {
+          status = 'expired_limited_mode';
+          expiresAt = trialEndsAt;
+        }
+      } else if (cached) {
+        // Use cached status but validate it
+        status = cached.status;
+        expiresAt = cached.expiresAt;
+        productId = cached.productId;
+        trialStartedAt = cached.trialStartedAt;
+      }
     }
   }
 
@@ -175,8 +226,8 @@ async function updateEntitlementCache(customerInfo: CustomerInfo): Promise<void>
     expiresAt,
     productId,
     lastValidatedAt: now,
-    trialStartedAt: null, // Will be set on first launch
-    gracePeriodEndsAt: null,
+    trialStartedAt,
+    gracePeriodEndsAt: status === 'grace_period' && expiresAt ? expiresAt : null,
   };
 
   // Update cache
@@ -184,36 +235,103 @@ async function updateEntitlementCache(customerInfo: CustomerInfo): Promise<void>
   await entitlementCache.setEntitlement(entitlementData);
 }
 
-// Start trial (on first launch)
+// Start trial - validates with RevenueCat first
+// Note: RevenueCat handles trials through intro offers on products
+// This function creates a local trial that should be replaced by actual RevenueCat subscription with intro offer
 export async function startTrial(): Promise<SubscriptionEntitlement> {
-  const now = Date.now();
-  const trialEndsAt = now + TRIAL_DAYS * 24 * 60 * 60 * 1000;
+  try {
+    // First, ensure RevenueCat is initialized
+    await initializeRevenueCat();
+    
+    // Always check RevenueCat first for actual entitlements
+    const customerInfo = await getCustomerInfo();
+    
+    // Update cache with RevenueCat data first
+    await updateEntitlementCache(customerInfo);
+    const cached = await appStorage.getSubscriptionEntitlement();
+    
+    // If RevenueCat has an active entitlement (including trial/intro offers), use it
+    if (cached && (cached.status === 'trial_active' || cached.status === 'active_subscribed')) {
+      return cached;
+    }
+    
+    // Check if user has any purchases (they might have purchased without trial)
+    if (customerInfo.entitlements.all[ENTITLEMENT_IDENTIFIER]) {
+      // User has entitlement (might be expired) - use it
+      if (cached) {
+        return cached;
+      }
+    }
+    
+    // No existing RevenueCat entitlement - create local trial
+    // This is a fallback for offline-first, but should be replaced by actual RevenueCat subscription
+    // when user purchases (which will include intro offer/trial if configured in RevenueCat)
+    const now = Date.now();
+    const trialEndsAt = now + TRIAL_DAYS * 24 * 60 * 60 * 1000;
 
-  const entitlement: SubscriptionEntitlement = {
-    status: 'trial_active',
-    expiresAt: trialEndsAt,
-    productId: null,
-    lastValidatedAt: now,
-    trialStartedAt: now,
-    gracePeriodEndsAt: null,
-  };
+    const entitlement: SubscriptionEntitlement = {
+      status: 'trial_active',
+      expiresAt: trialEndsAt,
+      productId: null,
+      lastValidatedAt: now,
+      trialStartedAt: now,
+      gracePeriodEndsAt: null,
+    };
 
-  await appStorage.setSubscriptionEntitlement(entitlement);
-  await entitlementCache.setEntitlement(entitlement);
+    await appStorage.setSubscriptionEntitlement(entitlement);
+    await entitlementCache.setEntitlement(entitlement);
 
-  return entitlement;
+    return entitlement;
+  } catch (error) {
+    console.error('Error starting trial:', error);
+    // If RevenueCat validation fails, still allow local trial for offline-first
+    const now = Date.now();
+    const trialEndsAt = now + TRIAL_DAYS * 24 * 60 * 60 * 1000;
+
+    const entitlement: SubscriptionEntitlement = {
+      status: 'trial_active',
+      expiresAt: trialEndsAt,
+      productId: null,
+      lastValidatedAt: now,
+      trialStartedAt: now,
+      gracePeriodEndsAt: null,
+    };
+
+    await appStorage.setSubscriptionEntitlement(entitlement);
+    await entitlementCache.setEntitlement(entitlement);
+
+    return entitlement;
+  }
 }
 
 // Check if user has Easy AAC Pro entitlement
 export async function hasProEntitlement(): Promise<boolean> {
   try {
+    await initializeRevenueCat();
     const customerInfo = await getCustomerInfo();
-    return customerInfo.entitlements.active[ENTITLEMENT_IDENTIFIER] !== undefined;
+    const hasActive = customerInfo.entitlements.active[ENTITLEMENT_IDENTIFIER] !== undefined;
+    
+    // Always update cache when checking
+    await updateEntitlementCache(customerInfo);
+    
+    return hasActive;
   } catch (error) {
     console.error('Error checking entitlement:', error);
     // Fallback to cached entitlement
     const cached = await appStorage.getSubscriptionEntitlement();
-    return cached?.status === 'active_subscribed' || cached?.status === 'trial_active';
+    return cached?.status === 'active_subscribed' || cached?.status === 'trial_active' || cached?.status === 'grace_period';
+  }
+}
+
+// Sync subscription status with RevenueCat
+export async function syncWithRevenueCat(): Promise<void> {
+  try {
+    await initializeRevenueCat();
+    const customerInfo = await getCustomerInfo();
+    await updateEntitlementCache(customerInfo);
+  } catch (error) {
+    console.error('Error syncing with RevenueCat:', error);
+    // Silent fail - use cached data
   }
 }
 

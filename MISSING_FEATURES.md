@@ -12,15 +12,23 @@ Based on the implementation plan, here are the critical features that are missin
 - Emotion → Need → Speak flow
 - Photo capture and personalization
 - Multi-profile support
-- Subscription management with RevenueCat
+- Subscription management with RevenueCat (fully integrated)
 - Board editor with drag-and-drop
 - High contrast theme
 - Reduced motion support
+- **Symbol library integration** (ARASAAC search, symbol picker, hybrid mode)
+- **Search functionality** (real-time button search in caregiver mode)
+- **Export data** (JSON backup with sharing)
+- **Voice & TTS settings** (voice selection, rate/pitch adjustment)
+- **Switch scanning** (integrated into BoardGrid)
+- **Dwell selection** (integrated into buttons)
+- **Fallback mode enforcement** (core board only when expired)
+- **Improved subscription screen** (trial days remaining, upgrade from trial, RevenueCat paywall always used)
 
 ## ❌ Missing Critical Features
 
-### 1. Search Functionality
-**Status**: Not implemented
+### 1. ~~Search Functionality~~ ✅ COMPLETED
+**Status**: ✅ Implemented
 **Plan Reference**: Lines 264-268
 **Requirements**:
 - Simple text search across all buttons
@@ -28,62 +36,47 @@ Based on the implementation plan, here are the critical features that are missin
 - Accessible via caregiver mode
 **Priority**: Medium (useful for large boards)
 
-### 2. Symbol Library Integration
-**Status**: Partially implemented (service exists but not fully integrated)
-**Plan Reference**: Lines 348-353
-**Requirements**:
-- Pre-loaded symbol library (ARASAAC or similar)
+### 2. ~~Symbol Library Integration~~ ✅ COMPLETED
+**Status**: ✅ Fully implemented
+- ARASAAC API integration
+- Symbol picker component
 - Search symbols
 - Assign to buttons
 - Hybrid: photo + symbol overlay option
-**Priority**: High (core feature for AAC apps)
 
-### 3. Export Data (JSON Backup)
-**Status**: Not implemented
-**Plan Reference**: Line 299
-**Requirements**:
-- Export all profile data as JSON
-- Include boards, buttons, routines, media assets
-- Accessible from caregiver mode
-**Priority**: Medium (important for data portability)
+### 3. ~~Export Data (JSON Backup)~~ ✅ COMPLETED
+**Status**: ✅ Implemented
+- Export service created
+- JSON export with all profile data
+- Share functionality
+- Accessible from caregiver settings
 
-### 4. Switch Scanning
-**Status**: Component exists but needs integration
-**Plan Reference**: Lines 357-363
-**Requirements**:
+### 4. ~~Switch Scanning~~ ✅ COMPLETED
+**Status**: ✅ Integrated
+- Integrated into BoardGrid
 - Visual scanning indicator
 - Configurable scan speed
-- Auto-select on dwell
-- Switch input support
-**Priority**: High (critical accessibility feature)
+- Subscription gated
 
-### 5. Dwell Selection
-**Status**: Component exists but needs integration
-**Plan Reference**: Lines 365-370
-**Requirements**:
-- Configurable dwell time (0.5s - 3s)
+### 5. ~~Dwell Selection~~ ✅ COMPLETED
+**Status**: ✅ Integrated
+- Wrapped buttons with DwellSelector
 - Visual feedback during dwell
-- Cancel on movement
-**Priority**: High (critical accessibility feature)
+- Configurable dwell time
+- Subscription gated
 
-### 6. Voice Selection Per Profile
-**Status**: Not implemented
-**Plan Reference**: Line 273
-**Requirements**:
-- Multiple offline voices (system voices)
-- Voice selection per profile
-- Persist selection in profile settings
-**Priority**: Medium (enhances personalization)
+### 6. ~~Voice Selection Per Profile~~ ✅ COMPLETED
+**Status**: ✅ Implemented
+- Voice picker in settings
+- Multiple system voices
+- Persists in profile settings
 
-### 7. Rate/Pitch Adjustment for TTS
-**Status**: Not implemented
-**Plan Reference**: Line 274
-**Requirements**:
-- Rate adjustment (speed)
-- Pitch adjustment
+### 7. ~~Rate/Pitch Adjustment for TTS~~ ✅ COMPLETED
+**Status**: ✅ Implemented
+- Rate slider (0.0-1.0)
+- Pitch slider (0.5-2.0)
 - Per-profile settings
-- Accessible from caregiver settings
-**Priority**: Medium (important for customization)
+- Integrated with speech service
 
 ## 🔧 Implementation Notes
 

@@ -9,6 +9,10 @@ export interface AccessibilityTheme {
   reducedMotion: boolean;
   largeTargets: boolean;
   fontSizeScale: number; // 1.0 to 2.0
+  switchScanning?: boolean;
+  dwellSelection?: boolean;
+  scanSpeed?: number; // milliseconds
+  dwellTime?: number; // milliseconds
 }
 
 export const defaultAccessibilityTheme: AccessibilityTheme = {
@@ -16,6 +20,10 @@ export const defaultAccessibilityTheme: AccessibilityTheme = {
   reducedMotion: false,
   largeTargets: false,
   fontSizeScale: 1.0,
+  switchScanning: false,
+  dwellSelection: false,
+  scanSpeed: 1000,
+  dwellTime: 1500,
 };
 
 // Get accessibility-adjusted colors

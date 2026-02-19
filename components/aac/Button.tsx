@@ -12,6 +12,8 @@ import type { Button as ButtonType } from '../../database/types';
 import { useAACStore } from '../../store/aacStore';
 import { useSpeech } from '../../hooks/useSpeech';
 import { useSubscriptionStore } from '../../store/subscriptionStore';
+import { useAccessibility } from '../../hooks/useAccessibility';
+import { DwellSelector } from '../accessibility/DwellSelector';
 
 interface AACButtonProps {
   button: ButtonType;
@@ -24,6 +26,9 @@ export const AACButton = memo<AACButtonProps>(({ button, size = 100, onPress, st
   const { addToSentence } = useAACStore();
   const { speak } = useSpeech();
   const { isFeatureAvailable } = useSubscriptionStore();
+  const { settings } = useAccessibility();
+
+  const canUseDwellSelection = isFeatureAvailable('dwell_selection') && settings.dwellSelection;
 
   const handlePress = async () => {
     if (onPress) {
@@ -40,7 +45,7 @@ export const AACButton = memo<AACButtonProps>(({ button, size = 100, onPress, st
 
   const buttonSize = Math.max(size, getTouchTargetSize(defaultAccessibilityTheme));
 
-  return (
+  const buttonContent = (
     <TouchableOpacity
       style={[
         styles.button,
@@ -52,17 +57,17 @@ export const AACButton = memo<AACButtonProps>(({ button, size = 100, onPress, st
         },
         style,
       ]}
-      onPress={handlePress}
+      onPress={canUseDwellSelection ? undefined : handlePress}
       activeOpacity={0.7}
       accessibilityLabel={button.label}
       accessibilityHint={`Speaks: ${button.speech_text}`}
       accessibilityRole="button"
     >
-      {button.image_path && (
+      {(button.symbol_path || button.image_path) && (
         <Image
-          source={{ uri: button.image_path }}
+          source={{ uri: button.symbol_path || button.image_path }}
           style={styles.image}
-          resizeMode="cover"
+          resizeMode={button.symbol_path ? 'contain' : 'cover'}
         />
       )}
       <Text style={styles.label} numberOfLines={2}>
@@ -70,6 +75,20 @@ export const AACButton = memo<AACButtonProps>(({ button, size = 100, onPress, st
       </Text>
     </TouchableOpacity>
   );
+
+  if (canUseDwellSelection) {
+    return (
+      <DwellSelector
+        onSelect={handlePress}
+        dwellTime={settings.dwellTime || 1500}
+        enabled={canUseDwellSelection}
+      >
+        {buttonContent}
+      </DwellSelector>
+    );
+  }
+
+  return buttonContent;
 });
 
 AACButton.displayName = 'AACButton';

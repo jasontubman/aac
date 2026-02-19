@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { appStorage } from '../services/storage';
 import { getBoard, getButtonsByBoard, getCoreBoard, getBoardsByProfile } from '../database/queries';
 import { initializeCoreBoard } from '../utils/coreBoard';
+import { useSubscriptionStore } from './subscriptionStore';
 import type { Board, Button } from '../database/types';
 
 interface AACState {
@@ -114,6 +115,10 @@ export const useAACStore = create<AACState>((set, get) => ({
       // If no last board and we have a profile, try to load core board
       if (activeProfileId) {
         try {
+          // Check subscription status for fallback mode
+          const subscriptionStatus = useSubscriptionStore.getState().getCurrentStatus();
+          const isFallbackMode = subscriptionStatus === 'expired_limited_mode';
+
           // First try to get existing core board
           let board = await getCoreBoard(activeProfileId);
           
@@ -125,8 +130,28 @@ export const useAACStore = create<AACState>((set, get) => ({
               const boardId = await initializeCoreBoard(activeProfileId);
               board = await getBoard(boardId);
             } else {
-              // Use first available board
-              board = boards[0];
+              // In fallback mode, only use core board
+              if (isFallbackMode) {
+                board = boards.find(b => b.is_core === 1) || null;
+                if (!board) {
+                  // Create core board if none exists
+                  const boardId = await initializeCoreBoard(activeProfileId);
+                  board = await getBoard(boardId);
+                }
+              } else {
+                // Use first available board
+                board = boards[0];
+              }
+            }
+          } else if (isFallbackMode && !board.is_core) {
+            // In fallback mode, switch to core board if current board is not core
+            const coreBoard = await getCoreBoard(activeProfileId);
+            if (coreBoard) {
+              board = coreBoard;
+            } else {
+              // Create core board if none exists
+              const boardId = await initializeCoreBoard(activeProfileId);
+              board = await getBoard(boardId);
             }
           }
           

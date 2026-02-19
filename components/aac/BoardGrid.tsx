@@ -1,9 +1,12 @@
-import React, { memo, useMemo, useCallback } from 'react';
+import React, { memo, useMemo, useCallback, useState, useEffect } from 'react';
 import { View, StyleSheet, FlatList } from 'react-native';
 import { spacing } from '../../theme';
 import { AACButton } from './Button';
 import type { Button as ButtonType, Board } from '../../database/types';
 import { useAACStore } from '../../store/aacStore';
+import { useSubscriptionStore } from '../../store/subscriptionStore';
+import { useAccessibility } from '../../hooks/useAccessibility';
+import { SwitchScanner } from '../accessibility/SwitchScanner';
 
 interface BoardGridProps {
   board: Board;
@@ -13,9 +16,20 @@ interface BoardGridProps {
 
 export const BoardGrid = memo<BoardGridProps>(({ board, buttons, onButtonPress }) => {
   const { currentButtons } = useAACStore();
+  const { isFeatureAvailable } = useSubscriptionStore();
+  const { settings } = useAccessibility();
+  const [switchScanningEnabled, setSwitchScanningEnabled] = useState(false);
 
   // Use provided buttons or current buttons from store
   const displayButtons = buttons.length > 0 ? buttons : currentButtons;
+
+  // Check if switch scanning is available and enabled
+  const canUseSwitchScanning = isFeatureAvailable('switch_scanning') && settings.switchScanning;
+
+  useEffect(() => {
+    // Enable switch scanning if available
+    setSwitchScanningEnabled(canUseSwitchScanning);
+  }, [canUseSwitchScanning]);
 
   // Calculate button size based on grid dimensions
   const buttonSize = useMemo(() => {
@@ -43,8 +57,20 @@ export const BoardGrid = memo<BoardGridProps>(({ board, buttons, onButtonPress }
 
   const keyExtractor = useCallback((item: ButtonType) => item.id, []);
 
+  const handleSwitchSelect = useCallback((button: ButtonType) => {
+    onButtonPress?.(button);
+  }, [onButtonPress]);
+
   return (
     <View style={styles.container}>
+      {switchScanningEnabled && (
+        <SwitchScanner
+          items={displayButtons}
+          onSelect={handleSwitchSelect}
+          scanSpeed={settings.scanSpeed || 1000}
+          enabled={switchScanningEnabled}
+        />
+      )}
       <FlatList
         data={displayButtons}
         renderItem={renderButton}

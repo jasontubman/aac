@@ -118,6 +118,17 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
   },
 
   initialize: async () => {
+    // Always validate with RevenueCat first
+    try {
+      const { initializeRevenueCat, getCustomerInfo, updateEntitlementCache } = await import('../services/subscription');
+      await initializeRevenueCat();
+      const customerInfo = await getCustomerInfo();
+      await updateEntitlementCache(customerInfo);
+    } catch (error) {
+      console.log('Could not validate with RevenueCat (offline mode):', error);
+    }
+    
+    // Get updated cache after RevenueCat validation
     const cached = await appStorage.getSubscriptionEntitlement();
     if (cached) {
       set({ entitlement: cached });

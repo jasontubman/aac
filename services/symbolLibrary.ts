@@ -86,23 +86,43 @@ export function getSymbolUrl(word: string, color: boolean = true): string {
 }
 
 /**
- * Search for symbols by keyword
- * Uses OpenSymbols API or ARASAAC search
+ * Search for symbols by keyword using ARASAAC API
+ * ARASAAC search endpoint: https://api.arasaac.org/api/pictograms/es/search/{keyword}
  */
-export async function searchSymbols(keyword: string): Promise<Array<{
-  id: string;
+export async function searchSymbols(keyword: string, locale: string = 'en'): Promise<Array<{
+  id: number;
   name: string;
   imageUrl: string;
   source: string;
 }>> {
-  try {
-    // Example: OpenSymbols API search
-    // const response = await fetch(`https://www.opensymbols.org/api/v2/symbols/search?q=${encodeURIComponent(keyword)}`);
-    // const data = await response.json();
-    // return data.symbols.map(...);
-    
-    // For now, return empty array - implement actual search
+  if (!keyword || keyword.trim().length === 0) {
     return [];
+  }
+
+  try {
+    // ARASAAC search API - supports multiple locales
+    // Using 'es' (Spanish) as it has the most symbols, but we can search in any language
+    const searchUrl = `https://api.arasaac.org/api/pictograms/${locale}/search/${encodeURIComponent(keyword.trim())}`;
+    const response = await fetch(searchUrl);
+    
+    if (!response.ok) {
+      console.warn('ARASAAC search failed:', response.status);
+      return [];
+    }
+
+    const data = await response.json();
+    
+    // ARASAAC returns an array of pictogram objects
+    if (!Array.isArray(data)) {
+      return [];
+    }
+
+    return data.slice(0, 50).map((pictogram: any) => ({
+      id: pictogram._id,
+      name: pictogram.keywords?.[0]?.keyword || keyword,
+      imageUrl: getARASAACSymbolUrl(pictogram._id, true, 500),
+      source: 'ARASAAC',
+    }));
   } catch (error) {
     console.error('Error searching symbols:', error);
     return [];
@@ -131,4 +151,18 @@ export async function downloadAndCacheSymbol(
  */
 export function getCoreWordSymbol(word: string): string {
   return getSymbolUrl(word, true);
+}
+
+/**
+ * Get symbol by ARASAAC ID
+ */
+export function getSymbolById(symbolId: number, color: boolean = true, size: number = 500): string {
+  return getARASAACSymbolUrl(symbolId, color, size);
+}
+
+export interface SymbolResult {
+  id: number;
+  name: string;
+  imageUrl: string;
+  source: string;
 }

@@ -36,7 +36,10 @@ import {
 import { generateId } from '../../utils/id';
 import type { Board, Button } from '../../database/types';
 import { PhotoCapture } from './PhotoCapture';
+import { SymbolPicker } from './SymbolPicker';
+import { BoardSearch } from './BoardSearch';
 import * as ImagePicker from 'expo-image-picker';
+import type { SymbolResult } from '../../services/symbolLibrary';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const GRID_PADDING = spacing.md;
@@ -70,9 +73,12 @@ export const BoardEditor: React.FC<BoardEditorProps> = ({
   const [editingButton, setEditingButton] = useState<Button | null>(null);
   const [showButtonModal, setShowButtonModal] = useState(false);
   const [showPhotoCapture, setShowPhotoCapture] = useState(false);
+  const [showSymbolPicker, setShowSymbolPicker] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
   const [buttonLabel, setButtonLabel] = useState('');
   const [buttonSpeechText, setButtonSpeechText] = useState('');
   const [buttonImagePath, setButtonImagePath] = useState<string | null>(null);
+  const [buttonSymbolPath, setButtonSymbolPath] = useState<string | null>(null);
   const [draggedButtonId, setDraggedButtonId] = useState<string | null>(null);
   const [editMode, setEditMode] = useState(true);
   const [targetPosition, setTargetPosition] = useState<{ x: number; y: number } | null>(null);
@@ -226,6 +232,7 @@ export const BoardEditor: React.FC<BoardEditorProps> = ({
     setButtonLabel('');
     setButtonSpeechText('');
     setButtonImagePath(null);
+    setButtonSymbolPath(null);
     setShowButtonModal(true);
   };
 
@@ -260,6 +267,7 @@ export const BoardEditor: React.FC<BoardEditorProps> = ({
           label: buttonLabel,
           speech_text: buttonSpeechText,
           image_path: buttonImagePath || editingButton.image_path,
+          symbol_path: buttonSymbolPath || null,
         });
       } else {
         // Use target position if set (from tapping empty cell), otherwise find next available
@@ -296,7 +304,9 @@ export const BoardEditor: React.FC<BoardEditorProps> = ({
           buttonLabel,
           buttonSpeechText,
           buttonImagePath || `asset://button/${newButtonId}.png`,
-          nextPosition
+          nextPosition,
+          buttonSymbolPath || null,
+          null // color
         );
         setTargetPosition(null);
       }
@@ -482,12 +492,20 @@ export const BoardEditor: React.FC<BoardEditorProps> = ({
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Board Layout</Text>
-              <TouchableOpacity
-                style={styles.addButton}
-                onPress={handleAddButton}
-              >
-                <Text style={styles.addButtonText}>+ Add Button</Text>
-              </TouchableOpacity>
+              <View style={styles.headerButtons}>
+                <TouchableOpacity
+                  style={styles.searchButton}
+                  onPress={() => setShowSearch(true)}
+                >
+                  <Text style={styles.searchButtonText}>🔍 Search</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.addButton}
+                  onPress={handleAddButton}
+                >
+                  <Text style={styles.addButtonText}>+ Add Button</Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
             <View style={styles.gridContainer}>
@@ -525,6 +543,7 @@ export const BoardEditor: React.FC<BoardEditorProps> = ({
                             setButtonLabel(button.label);
                             setButtonSpeechText(button.speech_text);
                             setButtonImagePath(button.image_path);
+                            setButtonSymbolPath(button.symbol_path || null);
                             setShowButtonModal(true);
                           }}
                           onLongPress={() => {
@@ -617,6 +636,7 @@ export const BoardEditor: React.FC<BoardEditorProps> = ({
                 setButtonLabel('');
                 setButtonSpeechText('');
                 setButtonImagePath(null);
+                setButtonSymbolPath(null);
                 setTargetPosition(null);
               }}
             >
@@ -648,11 +668,21 @@ export const BoardEditor: React.FC<BoardEditorProps> = ({
 
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Image</Text>
-              {buttonImagePath && (
-                <Image
-                  source={{ uri: buttonImagePath }}
-                  style={styles.previewImage}
-                />
+              {(buttonImagePath || buttonSymbolPath) && (
+                <View style={styles.previewContainer}>
+                  {buttonImagePath && (
+                    <Image
+                      source={{ uri: buttonImagePath }}
+                      style={styles.previewImage}
+                    />
+                  )}
+                  {buttonSymbolPath && (
+                    <Image
+                      source={{ uri: buttonSymbolPath }}
+                      style={styles.previewImage}
+                    />
+                  )}
+                </View>
               )}
               <View style={styles.imageButtons}>
                 <TouchableOpacity
@@ -672,6 +702,25 @@ export const BoardEditor: React.FC<BoardEditorProps> = ({
                     <Text style={styles.imageButtonText}>Take Photo</Text>
                   </TouchableOpacity>
                 )}
+                <TouchableOpacity
+                  style={styles.imageButton}
+                  onPress={() => {
+                    setShowSymbolPicker(true);
+                  }}
+                >
+                  <Text style={styles.imageButtonText}>Choose Symbol</Text>
+                </TouchableOpacity>
+                {(buttonImagePath || buttonSymbolPath) && (
+                  <TouchableOpacity
+                    style={[styles.imageButton, styles.removeButton]}
+                    onPress={() => {
+                      setButtonImagePath(null);
+                      setButtonSymbolPath(null);
+                    }}
+                  >
+                    <Text style={styles.removeButtonText}>Remove Image</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
 
@@ -684,6 +733,37 @@ export const BoardEditor: React.FC<BoardEditorProps> = ({
           </ScrollView>
         </View>
       </Modal>
+
+      {/* Symbol Picker Modal */}
+      <SymbolPicker
+        visible={showSymbolPicker}
+        onSelect={(symbol) => {
+          setButtonSymbolPath(symbol.imageUrl);
+          setShowSymbolPicker(false);
+          setShowButtonModal(true);
+        }}
+        onCancel={() => {
+          setShowSymbolPicker(false);
+          setShowButtonModal(true);
+        }}
+        searchKeyword={buttonLabel}
+      />
+
+      {/* Search Modal */}
+      {showSearch && (
+        <BoardSearch
+          buttons={buttons}
+          onSelectButton={(button) => {
+            setEditingButton(button);
+            setButtonLabel(button.label);
+            setButtonSpeechText(button.speech_text);
+            setButtonImagePath(button.image_path);
+            setButtonSymbolPath(button.symbol_path || null);
+            setShowButtonModal(true);
+          }}
+          onClose={() => setShowSearch(false)}
+        />
+      )}
     </View>
   );
 };
@@ -817,6 +897,20 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: spacing.md,
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  searchButton: {
+    backgroundColor: colors.neutral[200],
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.md,
+  },
+  searchButtonText: {
+    ...typography.button.small,
+    color: colors.text.primary,
   },
   sectionTitle: {
     ...typography.heading.h2,
@@ -1024,11 +1118,15 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: spacing.md,
   },
+  previewContainer: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    marginBottom: spacing.md,
+  },
   previewImage: {
     width: 150,
     height: 150,
     borderRadius: borderRadius.md,
-    marginBottom: spacing.md,
     backgroundColor: colors.neutral[100],
   },
   imageButtons: {
@@ -1043,6 +1141,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   imageButtonText: {
+    ...typography.button.small,
+    color: colors.text.light,
+  },
+  removeButton: {
+    backgroundColor: colors.error,
+  },
+  removeButtonText: {
     ...typography.button.small,
     color: colors.text.light,
   },
