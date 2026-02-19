@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Linking } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing, typography } from '../../theme';
 import { POLICY_URLS, shouldUseInAppScreens } from '../../utils/policyUrls';
 
 export default function PrivacyScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [useInApp, setUseInApp] = useState(true);
 
   useEffect(() => {
@@ -32,8 +34,10 @@ export default function PrivacyScreen() {
   // If using hosted URLs, show a link to open them
   if (!useInApp && POLICY_URLS.privacy) {
     return (
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-        <Text style={styles.title}>Privacy Policy</Text>
+      <ScrollView 
+        style={styles.container} 
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + spacing.xl }]}
+      >
         <Text style={styles.text}>
           Our Privacy Policy is available online. Click the button below to view it in your browser.
         </Text>
@@ -49,7 +53,10 @@ export default function PrivacyScreen() {
   }
 
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView 
+      style={styles.container}
+      contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xl }}
+    >
       <Text style={styles.title}>Privacy Policy</Text>
       
       <View style={styles.section}>

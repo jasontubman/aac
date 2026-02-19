@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { appStorage } from '../services/storage';
-import { getBoard, getButtonsByBoard } from '../database/queries';
+import { getBoard, getButtonsByBoard, getCoreBoard, getBoardsByProfile } from '../database/queries';
+import { initializeCoreBoard } from '../utils/coreBoard';
 import type { Board, Button } from '../database/types';
 
 interface AACState {
@@ -23,11 +24,11 @@ interface AACState {
   addToSentence: (button: Button) => void;
   clearSentence: () => void;
   speakSentence: () => void;
-  setCurrentRoutine: (routineId: string | null) => void;
+  setCurrentRoutine: (routineId: string | null) => Promise<void>;
   loadBoardButtons: (boardId: string) => Promise<void>;
   
   // Initialize
-  initialize: () => Promise<void>;
+  initialize: (activeProfileId?: string) => Promise<void>;
 }
 
 export const useAACStore = create<AACState>((set, get) => ({
@@ -41,7 +42,7 @@ export const useAACStore = create<AACState>((set, get) => ({
   setCurrentBoard: async (board: Board | null) => {
     set({ currentBoard: board, isLoading: true });
     if (board) {
-      appStorage.setLastBoardId(board.id);
+      await appStorage.setLastBoardId(board.id);
       await get().loadBoardButtons(board.id);
     } else {
       set({ currentButtons: [], isLoading: false });
@@ -82,28 +83,69 @@ export const useAACStore = create<AACState>((set, get) => ({
     }
   },
 
-  setCurrentRoutine: (routineId: string | null) => {
+  setCurrentRoutine: async (routineId: string | null) => {
     set({ currentRoutineId: routineId });
-    appStorage.setCurrentRoutineId(routineId);
+    await appStorage.setCurrentRoutineId(routineId);
   },
 
-  initialize: async () => {
-    const lastBoardId = appStorage.getLastBoardId();
-    const currentRoutineId = appStorage.getCurrentRoutineId();
-    
-    if (lastBoardId) {
-      try {
-        const board = await getBoard(lastBoardId);
-        if (board) {
-          await get().setCurrentBoard(board);
+  initialize: async (activeProfileId?: string) => {
+    set({ isLoading: true });
+    try {
+      const lastBoardId = await appStorage.getLastBoardId();
+      const currentRoutineId = await appStorage.getCurrentRoutineId();
+      
+      // Try to load last board
+      if (lastBoardId) {
+        try {
+          const board = await getBoard(lastBoardId);
+          if (board) {
+            await get().setCurrentBoard(board);
+            set({ isLoading: false });
+            if (currentRoutineId) {
+              await get().setCurrentRoutine(currentRoutineId);
+            }
+            return;
+          }
+        } catch (error) {
+          console.error('Error loading last board:', error);
         }
-      } catch (error) {
-        console.error('Error loading last board:', error);
       }
-    }
-    
-    if (currentRoutineId) {
-      get().setCurrentRoutine(currentRoutineId);
+
+      // If no last board and we have a profile, try to load core board
+      if (activeProfileId) {
+        try {
+          // First try to get existing core board
+          let board = await getCoreBoard(activeProfileId);
+          
+          // If no core board exists, create one
+          if (!board) {
+            const boards = await getBoardsByProfile(activeProfileId);
+            if (boards.length === 0) {
+              // No boards at all, create core board
+              const boardId = await initializeCoreBoard(activeProfileId);
+              board = await getBoard(boardId);
+            } else {
+              // Use first available board
+              board = boards[0];
+            }
+          }
+          
+          if (board) {
+            await appStorage.setLastBoardId(board.id);
+            await get().setCurrentBoard(board);
+          }
+        } catch (error) {
+          console.error('Error loading/creating core board:', error);
+        }
+      }
+      
+      if (currentRoutineId) {
+        await get().setCurrentRoutine(currentRoutineId);
+      }
+    } catch (error) {
+      console.error('Error initializing AAC store:', error);
+    } finally {
+      set({ isLoading: false });
     }
   },
 }));

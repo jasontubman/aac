@@ -113,8 +113,18 @@ The database is automatically initialized on first launch. Core vocabulary board
 - ✅ COPPA-conscious
 - ✅ App Store compliant
 
+## Testing
+
+See `TESTING.md` for complete testing instructions including:
+- Running on iOS/Android simulators
+- Testing on physical devices
+- Subscription testing with RevenueCat
+- Unit tests
+- Debugging tips
+
 ## Documentation
 
+- `TESTING.md` - Complete testing guide
 - `ENV_SETUP.md` - Environment variables and API key configuration
 - `APP_STORE_COMPLIANCE.md` - App Store compliance checklist
 - `SUBMISSION_CHECKLIST.md` - Pre-submission checklist

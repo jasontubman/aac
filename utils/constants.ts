@@ -79,8 +79,8 @@ export const CORE_VOCABULARY = [
 export const CAREGIVER_GATE = {
   MAX_ATTEMPTS: 3,
   TIMEOUT_SECONDS: 30,
-  MIN_MATH_VALUE: 10,
-  MAX_MATH_VALUE: 99,
+  MIN_MATH_VALUE: 1,
+  MAX_MATH_VALUE: 10,
 } as const;
 
 // Animation durations (ms)

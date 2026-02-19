@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Linking } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing, typography } from '../../theme';
 import { POLICY_URLS, shouldUseInAppScreens } from '../../utils/policyUrls';
 
 export default function TermsScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [useInApp, setUseInApp] = useState(true);
 
   useEffect(() => {
@@ -30,8 +32,10 @@ export default function TermsScreen() {
   // If using hosted URLs, show a link to open them
   if (!useInApp && POLICY_URLS.terms) {
     return (
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-        <Text style={styles.title}>Terms of Service</Text>
+      <ScrollView 
+        style={styles.container} 
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + spacing.xl }]}
+      >
         <Text style={styles.text}>
           Our Terms of Service are available online. Click the button below to view them in your browser.
         </Text>
@@ -47,7 +51,10 @@ export default function TermsScreen() {
   }
 
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView 
+      style={styles.container}
+      contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xl }}
+    >
       <Text style={styles.title}>Terms of Service</Text>
       
       <View style={styles.section}>

@@ -16,10 +16,10 @@ interface SubscriptionState {
   isLoading: boolean;
   
   // Actions
-  setEntitlement: (entitlement: SubscriptionEntitlement) => void;
+  setEntitlement: (entitlement: SubscriptionEntitlement) => Promise<void>;
   getCurrentStatus: () => SubscriptionStatus;
   isFeatureAvailable: (feature: string) => boolean;
-  initialize: () => void;
+  initialize: () => Promise<void>;
   validateStatus: () => SubscriptionStatus;
 }
 
@@ -49,9 +49,9 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
   entitlement: null,
   isLoading: false,
 
-  setEntitlement: (entitlement: SubscriptionEntitlement) => {
+  setEntitlement: async (entitlement: SubscriptionEntitlement) => {
     set({ entitlement });
-    appStorage.setSubscriptionEntitlement(entitlement);
+    await appStorage.setSubscriptionEntitlement(entitlement);
   },
 
   getCurrentStatus: (): SubscriptionStatus => {
@@ -117,15 +117,15 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
     return true;
   },
 
-  initialize: () => {
-    const cached = appStorage.getSubscriptionEntitlement();
+  initialize: async () => {
+    const cached = await appStorage.getSubscriptionEntitlement();
     if (cached) {
       set({ entitlement: cached });
       // Validate and update status
       const currentStatus = get().validateStatus();
       if (currentStatus !== cached.status) {
         const updated = { ...cached, status: currentStatus };
-        get().setEntitlement(updated);
+        await get().setEntitlement(updated);
       }
     } else {
       // First launch - initialize as uninitialized
@@ -138,7 +138,7 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
         gracePeriodEndsAt: null,
       };
       set({ entitlement: initial });
-      appStorage.setSubscriptionEntitlement(initial);
+      await appStorage.setSubscriptionEntitlement(initial);
     }
   },
 }));

@@ -1,10 +1,4 @@
-import { createMMKV } from 'react-native-mmkv';
-
-// MMKV storage instance
-const storage = createMMKV({
-  id: 'aac-storage',
-  encryptionKey: 'aac-encryption-key', // In production, this should be generated securely
-});
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Storage keys
 export const StorageKeys = {
@@ -31,42 +25,48 @@ export const StorageKeys = {
   ENCRYPTION_KEY_REF: 'encryption_key_ref',
 } as const;
 
-// MMKV Storage wrapper
+// AsyncStorage wrapper (compatible with Expo Go)
 export const mmkvStorage = {
   // String operations
-  setString: (key: string, value: string): void => {
-    storage.set(key, value);
+  setString: async (key: string, value: string): Promise<void> => {
+    await AsyncStorage.setItem(key, value);
   },
 
-  getString: (key: string): string | undefined => {
-    return storage.getString(key);
+  getString: async (key: string): Promise<string | undefined> => {
+    const value = await AsyncStorage.getItem(key);
+    return value ?? undefined;
   },
 
   // Number operations
-  setNumber: (key: string, value: number): void => {
-    storage.set(key, value);
+  setNumber: async (key: string, value: number): Promise<void> => {
+    await AsyncStorage.setItem(key, value.toString());
   },
 
-  getNumber: (key: string): number | undefined => {
-    return storage.getNumber(key);
+  getNumber: async (key: string): Promise<number | undefined> => {
+    const value = await AsyncStorage.getItem(key);
+    if (value === null) return undefined;
+    const num = Number(value);
+    return isNaN(num) ? undefined : num;
   },
 
   // Boolean operations
-  setBoolean: (key: string, value: boolean): void => {
-    storage.set(key, value);
+  setBoolean: async (key: string, value: boolean): Promise<void> => {
+    await AsyncStorage.setItem(key, value ? 'true' : 'false');
   },
 
-  getBoolean: (key: string): boolean | undefined => {
-    return storage.getBoolean(key);
+  getBoolean: async (key: string): Promise<boolean | undefined> => {
+    const value = await AsyncStorage.getItem(key);
+    if (value === null) return undefined;
+    return value === 'true';
   },
 
   // Object/JSON operations
-  setObject: <T>(key: string, value: T): void => {
-    storage.set(key, JSON.stringify(value));
+  setObject: async <T>(key: string, value: T): Promise<void> => {
+    await AsyncStorage.setItem(key, JSON.stringify(value));
   },
 
-  getObject: <T>(key: string): T | undefined => {
-    const value = storage.getString(key);
+  getObject: async <T>(key: string): Promise<T | undefined> => {
+    const value = await AsyncStorage.getItem(key);
     if (!value) return undefined;
     try {
       return JSON.parse(value) as T;
@@ -76,117 +76,119 @@ export const mmkvStorage = {
   },
 
   // Delete
-  delete: (key: string): void => {
-    storage.remove(key);
+  delete: async (key: string): Promise<void> => {
+    await AsyncStorage.removeItem(key);
   },
 
   // Check if key exists
-  contains: (key: string): boolean => {
-    return storage.contains(key);
+  contains: async (key: string): Promise<boolean> => {
+    const value = await AsyncStorage.getItem(key);
+    return value !== null;
   },
 
   // Get all keys
-  getAllKeys: (): string[] => {
-    return storage.getAllKeys();
+  getAllKeys: async (): Promise<string[]> => {
+    const keys = await AsyncStorage.getAllKeys();
+    return [...keys]; // Convert readonly array to mutable array
   },
 
   // Clear all (use with caution)
-  clearAll: (): void => {
-    storage.clearAll();
+  clearAll: async (): Promise<void> => {
+    await AsyncStorage.clear();
   },
 };
 
 // Type-safe storage helpers
 export const appStorage = {
   // Subscription entitlement
-  setSubscriptionEntitlement: (entitlement: any): void => {
-    mmkvStorage.setObject(StorageKeys.SUBSCRIPTION_ENTITLEMENT, entitlement);
+  setSubscriptionEntitlement: async (entitlement: any): Promise<void> => {
+    await mmkvStorage.setObject(StorageKeys.SUBSCRIPTION_ENTITLEMENT, entitlement);
   },
 
-  getSubscriptionEntitlement: (): any | undefined => {
-    return mmkvStorage.getObject(StorageKeys.SUBSCRIPTION_ENTITLEMENT);
+  getSubscriptionEntitlement: async (): Promise<any | undefined> => {
+    return await mmkvStorage.getObject(StorageKeys.SUBSCRIPTION_ENTITLEMENT);
   },
 
   // Active profile
-  setActiveProfileId: (profileId: string | null): void => {
+  setActiveProfileId: async (profileId: string | null): Promise<void> => {
     if (profileId) {
-      mmkvStorage.setString(StorageKeys.ACTIVE_PROFILE_ID, profileId);
+      await mmkvStorage.setString(StorageKeys.ACTIVE_PROFILE_ID, profileId);
     } else {
-      mmkvStorage.delete(StorageKeys.ACTIVE_PROFILE_ID);
+      await mmkvStorage.delete(StorageKeys.ACTIVE_PROFILE_ID);
     }
   },
 
-  getActiveProfileId: (): string | undefined => {
-    return mmkvStorage.getString(StorageKeys.ACTIVE_PROFILE_ID);
+  getActiveProfileId: async (): Promise<string | undefined> => {
+    return await mmkvStorage.getString(StorageKeys.ACTIVE_PROFILE_ID);
   },
 
   // Kid/Caregiver mode
-  setKidMode: (enabled: boolean): void => {
-    mmkvStorage.setBoolean(StorageKeys.KID_MODE, enabled);
+  setKidMode: async (enabled: boolean): Promise<void> => {
+    await mmkvStorage.setBoolean(StorageKeys.KID_MODE, enabled);
   },
 
-  isKidMode: (): boolean => {
-    return mmkvStorage.getBoolean(StorageKeys.KID_MODE) ?? true; // Default to kid mode
+  isKidMode: async (): Promise<boolean> => {
+    return (await mmkvStorage.getBoolean(StorageKeys.KID_MODE)) ?? true; // Default to kid mode
   },
 
-  setCaregiverModeUnlocked: (unlocked: boolean): void => {
-    mmkvStorage.setBoolean(StorageKeys.CAREGIVER_MODE_UNLOCKED, unlocked);
+  setCaregiverModeUnlocked: async (unlocked: boolean): Promise<void> => {
+    await mmkvStorage.setBoolean(StorageKeys.CAREGIVER_MODE_UNLOCKED, unlocked);
   },
 
-  isCaregiverModeUnlocked: (): boolean => {
-    return mmkvStorage.getBoolean(StorageKeys.CAREGIVER_MODE_UNLOCKED) ?? false;
+  isCaregiverModeUnlocked: async (): Promise<boolean> => {
+    return (await mmkvStorage.getBoolean(StorageKeys.CAREGIVER_MODE_UNLOCKED)) ?? false;
   },
 
   // Onboarding
-  setOnboardingCompleted: (completed: boolean): void => {
-    mmkvStorage.setBoolean(StorageKeys.ONBOARDING_COMPLETED, completed);
+  setOnboardingCompleted: async (completed: boolean): Promise<void> => {
+    await mmkvStorage.setBoolean(StorageKeys.ONBOARDING_COMPLETED, completed);
   },
 
-  isOnboardingCompleted: (): boolean => {
-    return mmkvStorage.getBoolean(StorageKeys.ONBOARDING_COMPLETED) ?? false;
+  isOnboardingCompleted: async (): Promise<boolean> => {
+    return (await mmkvStorage.getBoolean(StorageKeys.ONBOARDING_COMPLETED)) ?? false;
   },
 
   // First launch
-  setFirstLaunch: (isFirst: boolean): void => {
-    mmkvStorage.setBoolean(StorageKeys.FIRST_LAUNCH, isFirst);
+  setFirstLaunch: async (isFirst: boolean): Promise<void> => {
+    await mmkvStorage.setBoolean(StorageKeys.FIRST_LAUNCH, isFirst);
   },
 
-  isFirstLaunch: (): boolean => {
-    return mmkvStorage.getBoolean(StorageKeys.FIRST_LAUNCH) ?? true;
+  isFirstLaunch: async (): Promise<boolean> => {
+    return (await mmkvStorage.getBoolean(StorageKeys.FIRST_LAUNCH)) ?? true;
   },
 
   // Current routine
-  setCurrentRoutineId: (routineId: string | null): void => {
+  setCurrentRoutineId: async (routineId: string | null): Promise<void> => {
     if (routineId) {
-      mmkvStorage.setString(StorageKeys.CURRENT_ROUTINE_ID, routineId);
+      await mmkvStorage.setString(StorageKeys.CURRENT_ROUTINE_ID, routineId);
     } else {
-      mmkvStorage.delete(StorageKeys.CURRENT_ROUTINE_ID);
+      await mmkvStorage.delete(StorageKeys.CURRENT_ROUTINE_ID);
     }
   },
 
-  getCurrentRoutineId: (): string | undefined => {
-    return mmkvStorage.getString(StorageKeys.CURRENT_ROUTINE_ID);
+  getCurrentRoutineId: async (): Promise<string | undefined> => {
+    return await mmkvStorage.getString(StorageKeys.CURRENT_ROUTINE_ID);
   },
 
   // Last board
-  setLastBoardId: (boardId: string | null): void => {
+  setLastBoardId: async (boardId: string | null): Promise<void> => {
     if (boardId) {
-      mmkvStorage.setString(StorageKeys.LAST_BOARD_ID, boardId);
+      await mmkvStorage.setString(StorageKeys.LAST_BOARD_ID, boardId);
     } else {
-      mmkvStorage.delete(StorageKeys.LAST_BOARD_ID);
+      await mmkvStorage.delete(StorageKeys.LAST_BOARD_ID);
     }
   },
 
-  getLastBoardId: (): string | undefined => {
-    return mmkvStorage.getString(StorageKeys.LAST_BOARD_ID);
+  getLastBoardId: async (): Promise<string | undefined> => {
+    return await mmkvStorage.getString(StorageKeys.LAST_BOARD_ID);
   },
 
   // Accessibility settings
-  setAccessibilitySettings: (settings: any): void => {
-    mmkvStorage.setObject(StorageKeys.ACCESSIBILITY_SETTINGS, settings);
+  setAccessibilitySettings: async (settings: any): Promise<void> => {
+    await mmkvStorage.setObject(StorageKeys.ACCESSIBILITY_SETTINGS, settings);
   },
 
-  getAccessibilitySettings: (): any | undefined => {
-    return mmkvStorage.getObject(StorageKeys.ACCESSIBILITY_SETTINGS);
+  getAccessibilitySettings: async (): Promise<any | undefined> => {
+    return await mmkvStorage.getObject(StorageKeys.ACCESSIBILITY_SETTINGS);
   },
 };

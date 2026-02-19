@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Linking } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '../../theme';
 import { useProfileStore } from '../../store/profileStore';
 import { appStorage } from '../../services/storage';
@@ -25,6 +26,7 @@ interface AdvancedFeatures {
 
 export default function SettingsScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { activeProfile, updateProfileSettings } = useProfileStore();
   const [behaviorDetection, setBehaviorDetection] = useState(false);
   const [emotionSuggestions, setEmotionSuggestions] = useState(false);
@@ -85,8 +87,10 @@ export default function SettingsScreen() {
   };
 
   return (
-    <ScrollView style={styles.container}>
-      <Text style={styles.title}>Settings</Text>
+    <ScrollView 
+      style={styles.container}
+      contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xl }}
+    >
 
       {/* Advanced Features Section */}
       <View style={styles.section}>
@@ -287,11 +291,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background.light,
     padding: spacing.md,
-  },
-  title: {
-    ...typography.heading.h1,
-    marginBottom: spacing.xl,
-    color: colors.text.primary,
   },
   section: {
     marginBottom: spacing.xl,

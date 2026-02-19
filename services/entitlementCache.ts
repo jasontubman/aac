@@ -1,26 +1,55 @@
 import { appStorage } from './storage';
-import { validateSubscriptionStatus } from './subscription';
 import type { SubscriptionEntitlement } from '../store/subscriptionStore';
-import { SubscriptionStatus } from '../utils/constants';
+import { SubscriptionStatus, TRIAL_DAYS, GRACE_PERIOD_DAYS } from '../utils/constants';
+
+// Validate subscription status (check if expired, grace period, etc.)
+function validateSubscriptionStatus(
+  entitlement: SubscriptionEntitlement
+): SubscriptionStatus {
+  const now = Date.now();
+
+  // Check trial
+  if (entitlement.trialStartedAt) {
+    const trialEndsAt = entitlement.trialStartedAt + TRIAL_DAYS * 24 * 60 * 60 * 1000;
+    if (now < trialEndsAt) {
+      return 'trial_active';
+    }
+  }
+
+  // Check active subscription
+  if (entitlement.expiresAt && now < entitlement.expiresAt) {
+    return 'active_subscribed';
+  }
+
+  // Check grace period
+  if (entitlement.expiresAt) {
+    const gracePeriodEndsAt = entitlement.expiresAt + GRACE_PERIOD_DAYS * 24 * 60 * 60 * 1000;
+    if (now < gracePeriodEndsAt) {
+      return 'grace_period';
+    }
+  }
+
+  return 'expired_limited_mode';
+}
 
 // Entitlement cache service for offline-first access
 class EntitlementCacheService {
   private cache: SubscriptionEntitlement | null = null;
 
   // Get cached entitlement
-  getEntitlement(): SubscriptionEntitlement | null {
+  async getEntitlement(): Promise<SubscriptionEntitlement | null> {
     if (this.cache) {
       return this.cache;
     }
 
-    const cached = appStorage.getSubscriptionEntitlement();
+    const cached = await appStorage.getSubscriptionEntitlement();
     if (cached) {
       this.cache = cached;
       // Validate and update status
       const currentStatus = validateSubscriptionStatus(cached);
       if (currentStatus !== cached.status) {
         const updated = { ...cached, status: currentStatus };
-        this.setEntitlement(updated);
+        await this.setEntitlement(updated);
       }
     }
 
@@ -28,14 +57,14 @@ class EntitlementCacheService {
   }
 
   // Set entitlement cache
-  setEntitlement(entitlement: SubscriptionEntitlement): void {
+  async setEntitlement(entitlement: SubscriptionEntitlement): Promise<void> {
     this.cache = entitlement;
-    appStorage.setSubscriptionEntitlement(entitlement);
+    await appStorage.setSubscriptionEntitlement(entitlement);
   }
 
   // Get current status
-  getCurrentStatus(): SubscriptionStatus {
-    const entitlement = this.getEntitlement();
+  async getCurrentStatus(): Promise<SubscriptionStatus> {
+    const entitlement = await this.getEntitlement();
     if (!entitlement) {
       return 'uninitialized';
     }
@@ -43,9 +72,9 @@ class EntitlementCacheService {
   }
 
   // Clear cache
-  clear(): void {
+  async clear(): Promise<void> {
     this.cache = null;
-    appStorage.setSubscriptionEntitlement(null as any);
+    await appStorage.setSubscriptionEntitlement(null as any);
   }
 }
 

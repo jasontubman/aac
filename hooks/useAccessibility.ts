@@ -14,8 +14,8 @@ export function useAccessibility() {
     loadSettings();
   }, [activeProfile]);
 
-  const loadSettings = () => {
-    const cached = appStorage.getAccessibilitySettings();
+  const loadSettings = async () => {
+    const cached = await appStorage.getAccessibilitySettings();
     if (cached) {
       setSettings(cached);
     } else if (activeProfile) {
@@ -26,10 +26,10 @@ export function useAccessibility() {
     }
   };
 
-  const updateSettings = (newSettings: Partial<AccessibilityTheme>) => {
+  const updateSettings = async (newSettings: Partial<AccessibilityTheme>) => {
     const updated = { ...settings, ...newSettings };
     setSettings(updated);
-    appStorage.setAccessibilitySettings(updated);
+    await appStorage.setAccessibilitySettings(updated);
 
     // Also update profile settings
     if (activeProfile) {

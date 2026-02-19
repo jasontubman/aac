@@ -162,7 +162,7 @@ async function updateEntitlementCache(customerInfo: CustomerInfo): Promise<void>
     productId = entitlement.productIdentifier || null;
   } else {
     // Check if we have a cached entitlement
-    const cached = appStorage.getSubscriptionEntitlement();
+    const cached = await appStorage.getSubscriptionEntitlement();
     if (cached) {
       status = cached.status;
       expiresAt = cached.expiresAt;
@@ -180,12 +180,12 @@ async function updateEntitlementCache(customerInfo: CustomerInfo): Promise<void>
   };
 
   // Update cache
-  appStorage.setSubscriptionEntitlement(entitlementData);
-  entitlementCache.setEntitlement(entitlementData);
+  await appStorage.setSubscriptionEntitlement(entitlementData);
+  await entitlementCache.setEntitlement(entitlementData);
 }
 
 // Start trial (on first launch)
-export function startTrial(): SubscriptionEntitlement {
+export async function startTrial(): Promise<SubscriptionEntitlement> {
   const now = Date.now();
   const trialEndsAt = now + TRIAL_DAYS * 24 * 60 * 60 * 1000;
 
@@ -198,40 +198,10 @@ export function startTrial(): SubscriptionEntitlement {
     gracePeriodEndsAt: null,
   };
 
-  appStorage.setSubscriptionEntitlement(entitlement);
-  entitlementCache.setEntitlement(entitlement);
+  await appStorage.setSubscriptionEntitlement(entitlement);
+  await entitlementCache.setEntitlement(entitlement);
 
   return entitlement;
-}
-
-// Validate subscription status (check if expired, grace period, etc.)
-export function validateSubscriptionStatus(
-  entitlement: SubscriptionEntitlement
-): SubscriptionStatus {
-  const now = Date.now();
-
-  // Check trial
-  if (entitlement.trialStartedAt) {
-    const trialEndsAt = entitlement.trialStartedAt + TRIAL_DAYS * 24 * 60 * 60 * 1000;
-    if (now < trialEndsAt) {
-      return 'trial_active';
-    }
-  }
-
-  // Check active subscription
-  if (entitlement.expiresAt && now < entitlement.expiresAt) {
-    return 'active_subscribed';
-  }
-
-  // Check grace period
-  if (entitlement.expiresAt) {
-    const gracePeriodEndsAt = entitlement.expiresAt + GRACE_PERIOD_DAYS * 24 * 60 * 60 * 1000;
-    if (now < gracePeriodEndsAt) {
-      return 'grace_period';
-    }
-  }
-
-  return 'expired_limited_mode';
 }
 
 // Check if user has Easy AAC Pro entitlement
@@ -242,7 +212,7 @@ export async function hasProEntitlement(): Promise<boolean> {
   } catch (error) {
     console.error('Error checking entitlement:', error);
     // Fallback to cached entitlement
-    const cached = appStorage.getSubscriptionEntitlement();
+    const cached = await appStorage.getSubscriptionEntitlement();
     return cached?.status === 'active_subscribed' || cached?.status === 'trial_active';
   }
 }

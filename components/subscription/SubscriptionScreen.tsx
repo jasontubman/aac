@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Linking } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '../../theme';
 import {
   getOfferings,
@@ -22,6 +23,7 @@ import {
 import { presentPaywall } from '../../services/revenueCatPaywall';
 import { presentCustomerCenter } from '../../services/revenueCatCustomerCenter';
 import { useSubscriptionStore } from '../../store/subscriptionStore';
+import { appStorage } from '../../services/storage';
 import { RestorePurchases } from './RestorePurchases';
 import type { PurchasesPackage, PurchasesOffering } from 'react-native-purchases';
 import { SUBSCRIPTION_PRICES } from '../../utils/constants';
@@ -29,6 +31,7 @@ import { POLICY_URLS, shouldUseInAppScreens } from '../../utils/policyUrls';
 
 export const SubscriptionScreen: React.FC = () => {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [offerings, setOfferings] = useState<PurchasesOffering | null>(null);
   const [loading, setLoading] = useState(true);
   const [purchasing, setPurchasing] = useState(false);
@@ -36,9 +39,12 @@ export const SubscriptionScreen: React.FC = () => {
   const { setEntitlement, initialize } = useSubscriptionStore();
 
   useEffect(() => {
-    loadOfferings();
-    initialize();
-    checkSubscriptionStatus();
+    const init = async () => {
+      await loadOfferings();
+      await initialize();
+      await checkSubscriptionStatus();
+    };
+    init();
   }, []);
 
   const loadOfferings = async () => {
@@ -73,8 +79,15 @@ export const SubscriptionScreen: React.FC = () => {
       setPurchasing(true);
       await purchaseSubscription(packageToPurchase);
       // Entitlement will be updated automatically
-      initialize();
-      Alert.alert('Success', 'Thank you for subscribing to Easy AAC Pro!');
+      await initialize();
+      // Mark onboarding as complete if coming from onboarding flow
+      const onboardingCompleted = await appStorage.isOnboardingCompleted();
+      if (!onboardingCompleted) {
+        await appStorage.setOnboardingCompleted(true);
+        router.replace('/(tabs)');
+      } else {
+        Alert.alert('Success', 'Thank you for subscribing to Easy AAC Pro!');
+      }
     } catch (error: any) {
       if (error.message !== 'Purchase cancelled') {
         Alert.alert('Purchase Error', error.message || 'An error occurred during purchase.');
@@ -124,7 +137,10 @@ export const SubscriptionScreen: React.FC = () => {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView 
+      style={styles.container} 
+      contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + spacing.xl }]}
+    >
       <Text style={styles.title}>Easy AAC Pro</Text>
       <Text style={styles.description}>
         Get full access to all AAC features including routines, custom boards, photo personalization, and more.

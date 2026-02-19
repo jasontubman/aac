@@ -41,8 +41,8 @@ export const RoutineSelector: React.FC<RoutineSelectorProps> = ({
     }
   };
 
-  const handleSelectRoutine = (routineId: string | null) => {
-    setCurrentRoutine(routineId);
+  const handleSelectRoutine = async (routineId: string | null) => {
+    await setCurrentRoutine(routineId);
     onSelect?.(routineId);
   };
 

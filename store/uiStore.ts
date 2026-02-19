@@ -7,42 +7,42 @@ interface UIState {
   isCaregiverModeUnlocked: boolean;
   
   // Actions
-  setKidMode: (enabled: boolean) => void;
-  unlockCaregiverMode: () => void;
-  lockCaregiverMode: () => void;
-  toggleMode: () => void;
+  setKidMode: (enabled: boolean) => Promise<void>;
+  unlockCaregiverMode: () => Promise<void>;
+  lockCaregiverMode: () => Promise<void>;
+  toggleMode: () => Promise<void>;
   
   // Initialize from storage
-  initialize: () => void;
+  initialize: () => Promise<void>;
 }
 
 export const useUIStore = create<UIState>((set, get) => ({
   isKidMode: true,
   isCaregiverModeUnlocked: false,
 
-  setKidMode: (enabled: boolean) => {
+  setKidMode: async (enabled: boolean) => {
     set({ isKidMode: enabled });
-    appStorage.setKidMode(enabled);
+    await appStorage.setKidMode(enabled);
   },
 
-  unlockCaregiverMode: () => {
+  unlockCaregiverMode: async () => {
     set({ isCaregiverModeUnlocked: true });
-    appStorage.setCaregiverModeUnlocked(true);
+    await appStorage.setCaregiverModeUnlocked(true);
   },
 
-  lockCaregiverMode: () => {
+  lockCaregiverMode: async () => {
     set({ isCaregiverModeUnlocked: false });
-    appStorage.setCaregiverModeUnlocked(false);
+    await appStorage.setCaregiverModeUnlocked(false);
   },
 
-  toggleMode: () => {
+  toggleMode: async () => {
     const { isKidMode } = get();
-    get().setKidMode(!isKidMode);
+    await get().setKidMode(!isKidMode);
   },
 
-  initialize: () => {
-    const isKidMode = appStorage.isKidMode();
-    const isUnlocked = appStorage.isCaregiverModeUnlocked();
+  initialize: async () => {
+    const isKidMode = await appStorage.isKidMode();
+    const isUnlocked = await appStorage.isCaregiverModeUnlocked();
     set({ isKidMode, isCaregiverModeUnlocked: isUnlocked });
   },
 }));

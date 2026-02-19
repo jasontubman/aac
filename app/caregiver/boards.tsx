@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, FlatList } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BoardEditor } from '../../components/caregiver/BoardEditor';
 import { useProfileStore } from '../../store/profileStore';
 import { getBoardsByProfile } from '../../database/queries';
@@ -11,6 +12,7 @@ import type { Board } from '../../database/types';
 
 export default function BoardsScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ boardId?: string }>();
   const { activeProfile } = useProfileStore();
   const [boards, setBoards] = useState<Board[]>([]);
@@ -62,6 +64,10 @@ export default function BoardsScreen() {
     );
   }
 
+  useEffect(() => {
+    loadBoards();
+  }, [activeProfile]);
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -87,7 +93,7 @@ export default function BoardsScreen() {
             </Text>
           </TouchableOpacity>
         )}
-        contentContainerStyle={styles.list}
+        contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + spacing.md }]}
       />
     </View>
   );

@@ -29,9 +29,9 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
   setActiveProfile: async (profile: Profile | null) => {
     set({ activeProfile: profile });
     if (profile) {
-      appStorage.setActiveProfileId(profile.id);
+      await appStorage.setActiveProfileId(profile.id);
     } else {
-      appStorage.setActiveProfileId(null);
+      await appStorage.setActiveProfileId(null);
     }
   },
 
@@ -47,7 +47,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
   },
 
   loadActiveProfile: async () => {
-    const profileId = appStorage.getActiveProfileId();
+    const profileId = await appStorage.getActiveProfileId();
     if (!profileId) {
       set({ activeProfile: null });
       return;
